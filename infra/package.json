@@ -1,0 +1,24 @@
+{
+  "name": "noor-ai-infra",
+  "version": "1.0.0",
+  "bin": {
+    "noor-ai": "bin/noor-ai.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "cdk": "cdk",
+    "deploy": "cdk deploy",
+    "synth": "cdk synth",
+    "destroy": "cdk destroy"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "typescript": "~5.5"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.150.0",
+    "constructs": "^10.0.0",
+    "@aws-cdk/aws-lambda-python-alpha": "^2.150.0-alpha.0"
+  }
+}

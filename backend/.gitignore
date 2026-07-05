@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# uv
+.venv/
+
+# Generated for CDK deployment (not source of truth — pyproject.toml is)
+requirements.txt
+
+# Environment
+.env
