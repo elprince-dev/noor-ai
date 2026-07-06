@@ -1,27 +1,42 @@
-# Windows "mark of the web" metadata files
-*:Zone.Identifier
-
-# Node
-node_modules/
-dist/
-*.log
-
-# Python
+# ─── Python (backend) ─────────────────────────────
 __pycache__/
 *.py[cod]
-.venv/
-venv/
-.pytest_cache/
 *.egg-info/
+dist/
+build/
+.venv/
+backend/requirements.txt
 
-# CDK
+# ─── Node (infra + frontend) ─────────────────────
+node_modules/
+.next/
+out/
+
+# ─── CDK ──────────────────────────────────────────
 infra/cdk.out/
+*.js
+*.d.ts
+!infra/cdk.json
+!frontend/next.config.js
+!frontend/postcss.config.js
 
-# Env / secrets
+# ─── Environment / Secrets ────────────────────────
 .env
-.env.*
+.env.local
+.env*.local
 
-# OS / editor
-.DS_Store
-.idea/
+# ─── IDE ──────────────────────────────────────────
 .vscode/
+.idea/
+*.swp
+*.swo
+
+# ─── OS ───────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ─── Windows "mark of the web" metadata (WSL) ─────
+*:Zone.Identifier
+
+# ─── Misc ─────────────────────────────────────────
+*.log

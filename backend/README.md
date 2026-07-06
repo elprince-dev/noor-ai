@@ -23,17 +23,17 @@ uv add <package>
 
 ## Deployment
 
-CDK's `PythonFunction` construct uses pip internally to bundle dependencies.
-Before deploying, export a `requirements.txt` from uv:
+Dependencies are bundled on the host with `uv` during `cdk synth`/`deploy`
+— **no Docker required**. CDK resolves the dependency set from `pyproject.toml`
+and installs Lambda-compatible wheels (linux/x86_64, py3.12) into the asset,
+so there is no manual `requirements.txt` step.
 
-```bash
-cd backend
-uv export --no-hashes --no-dev > requirements.txt
-```
-
-Then deploy from the infra directory:
+Just deploy from the infra directory:
 
 ```bash
 cd ../infra
 npx cdk deploy
 ```
+
+> Requires `uv` on the machine running the deploy. If `uv` is missing, the
+> bundling step fails fast with an install hint (it does not fall back to Docker).

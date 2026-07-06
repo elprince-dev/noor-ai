@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, APIRouter, HTTPException
 
 from src.models.requests import AskRequest
 from src.models.responses import AskResponse, SessionResponse, HealthResponse
@@ -11,10 +11,14 @@ app = FastAPI(
     version="1.0.0",
 )
 
+# All routes live under /api so the path is identical across local dev,
+# API Gateway, and CloudFront (no prefix rewriting needed anywhere).
+router = APIRouter(prefix="/api")
+
 chat_service = ChatService()
 
 
-@app.post("/ask", response_model=AskResponse)
+@router.post("/ask", response_model=AskResponse)
 async def ask(request: AskRequest):
     """Ask an Islamic knowledge question."""
     try:
@@ -23,13 +27,16 @@ async def ask(request: AskRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/sessions", response_model=SessionResponse)
+@router.post("/sessions", response_model=SessionResponse)
 async def create_session():
     """Create a new conversation session."""
     return chat_service.create_session()
 
 
-@app.get("/health", response_model=HealthResponse)
+@router.get("/health", response_model=HealthResponse)
 async def health():
     """Health check endpoint."""
     return HealthResponse(status="healthy", model=config.bedrock_model_id)
+
+
+app.include_router(router)

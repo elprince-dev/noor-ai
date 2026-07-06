@@ -3,5 +3,8 @@
   "watch": {
     "include": ["**"],
     "exclude": ["node_modules", "cdk.out"]
+  },
+  "context": {
+    "@aws-cdk/core:defaultCrossStackReferences": "weak"
   }
 }
