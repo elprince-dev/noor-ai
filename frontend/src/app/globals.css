@@ -1,3 +1,139 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ---------------------------------------------------------------------------
+   Noor AI — global theme
+   Deep ink canvas · golden light accent · royal-blue interaction · crimson alerts
+   Supports dark (default) + light modes via .dark / .light on <html>.
+--------------------------------------------------------------------------- */
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  html.light {
+    color-scheme: light;
+  }
+
+  body {
+    @apply font-sans antialiased transition-colors duration-300;
+  }
+  html.dark body {
+    @apply bg-ink-950 text-slate-100;
+  }
+  html.light body {
+    @apply bg-slate-50 text-ink-800;
+  }
+
+  /* Selection uses the golden accent */
+  ::selection {
+    background: rgba(230, 185, 42, 0.28);
+    color: inherit;
+  }
+
+  /* Refined scrollbar */
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  html.dark *::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #22304f, #111a2e);
+    background-clip: padding-box;
+  }
+  html.light *::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #cbd5e1, #94a3b8);
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, #2f6bff, #1e3a8a);
+    background-clip: padding-box;
+  }
+
+  * {
+    scrollbar-width: thin;
+  }
+}
+
+@layer components {
+  /* Golden gradient text — used for the wordmark */
+  .text-gold-gradient {
+    @apply bg-gold-sheen bg-clip-text text-transparent;
+  }
+
+  /* Frosted glass surface — theme aware */
+  .glass {
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    border: 1px solid transparent;
+  }
+  html.dark .glass {
+    background: linear-gradient(
+      180deg,
+      rgba(24, 35, 61, 0.72),
+      rgba(11, 17, 32, 0.72)
+    );
+    border-color: rgba(255, 255, 255, 0.08);
+  }
+  html.light .glass {
+    background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.9),
+      rgba(248, 250, 252, 0.85)
+    );
+    border-color: rgba(15, 23, 42, 0.08);
+    box-shadow: 0 8px 32px -8px rgba(15, 23, 42, 0.12);
+  }
+}
+
+@layer utilities {
+  .animate-bounce-dot {
+    animation: bounceDot 1.4s ease-in-out infinite;
+  }
+  /* Blinking caret for the typewriter effect */
+  .caret::after {
+    content: "";
+    display: inline-block;
+    width: 2px;
+    height: 1em;
+    margin-left: 2px;
+    vertical-align: text-bottom;
+    background: currentColor;
+    opacity: 0.7;
+    animation: caretBlink 1s steps(2, start) infinite;
+  }
+  @keyframes caretBlink {
+    0%,
+    100% {
+      opacity: 0;
+    }
+    50% {
+      opacity: 0.7;
+    }
+  }
+}
+
+/* Respect reduced-motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

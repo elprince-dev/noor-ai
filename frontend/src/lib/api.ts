@@ -33,14 +33,25 @@ export class NoorApiClient {
     return res.json();
   }
 
-  async ask(request: AskRequest): Promise<AskResponse> {
+  /**
+   * Ask a question and stream the answer. `onToken` is called with each text
+   * chunk as it arrives.
+   */
+  async ask(request: AskRequest, onToken: (chunk: string) => void): Promise<void> {
     const res = await fetch(`${this.baseUrl}/ask`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(request),
     });
-    if (!res.ok) throw new Error(`API error: ${res.status}`);
-    return res.json();
+    if (!res.ok || !res.body) throw new Error(`API error: ${res.status}`);
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) onToken(decoder.decode(value, { stream: true }));
+    }
   }
 }
 

@@ -1,7 +1,6 @@
 import * as cdk from 'aws-cdk-lib';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
-import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import { Construct } from 'constructs';
@@ -14,21 +13,27 @@ export interface ApiStackProps extends cdk.StackProps {
   readonly chatTable: dynamodb.ITable;
 }
 
+// AWS Lambda Web Adapter layer — runs the FastAPI app (uvicorn) inside the
+// managed Python runtime and supports response streaming. No Docker needed.
+// https://github.com/awslabs/aws-lambda-web-adapter
+const LWA_LAYER_VERSION = 28;
+
 /**
- * Compute / API layer. Owns the request-handling Lambda, its IAM permissions,
- * and the public API Gateway. Stateless — safe to redeploy or replace without
- * touching persisted data.
+ * Compute / API layer. Owns the request-handling Lambda (FastAPI via the Lambda
+ * Web Adapter) and its IAM permissions, exposed through a streaming Function
+ * URL. Stateless — safe to redeploy or replace without touching persisted data.
  */
 export class ApiStack extends cdk.Stack {
-  /** REST API, consumed by the WebStack for the /api/* CloudFront behavior. */
-  public readonly api: apigateway.RestApi;
+  /** Function URL domain (no scheme/path), consumed by the WebStack origin. */
+  public readonly apiDomain: string;
 
   constructor(scope: Construct, id: string, props: ApiStackProps) {
     super(scope, id, props);
 
-    // ─── Lambda: API Handler ─────────────────────────────────
+    // ─── Lambda: FastAPI via Lambda Web Adapter ──────────────
     // Python deps are bundled on the host with `uv` (no Docker).
-    // See ./python-lambda-code for the bundling details.
+    // The LWA layer + run.sh start uvicorn; `response_stream` invoke mode makes
+    // FastAPI StreamingResponse stream through the Function URL.
     const backendDir = path.join(__dirname, '..', '..', 'backend');
 
     const apiLogGroup = new logs.LogGroup(this, 'ApiFunctionLogs', {
@@ -36,13 +41,26 @@ export class ApiStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
+    const lwaLayer = lambda.LayerVersion.fromLayerVersionArn(
+      this,
+      'LambdaWebAdapter',
+      `arn:aws:lambda:${this.region}:753240598075:layer:LambdaAdapterLayerX86:${LWA_LAYER_VERSION}`
+    );
+
     const apiFunction = new lambda.Function(this, 'ApiFunction', {
       runtime: lambda.Runtime.PYTHON_3_12,
-      handler: 'handler.handler',
+      handler: 'run.sh', // LWA startup script (starts uvicorn)
       timeout: cdk.Duration.seconds(60),
       memorySize: 512,
-      code: pythonLambdaCode(backendDir, ['src', 'handler.py']),
+      code: pythonLambdaCode(backendDir, ['src', 'run.sh']),
+      layers: [lwaLayer],
       environment: {
+        // Lambda Web Adapter configuration
+        AWS_LAMBDA_EXEC_WRAPPER: '/opt/bootstrap',
+        AWS_LWA_INVOKE_MODE: 'response_stream',
+        AWS_LWA_READINESS_CHECK_PATH: '/api/health',
+        PORT: '8000',
+        // Application configuration
         CHAT_TABLE: props.chatTable.tableName,
         BEDROCK_MODEL_ID: BEDROCK_MODEL_ID,
         BEDROCK_REGION: BEDROCK_REGION,
@@ -66,29 +84,17 @@ export class ApiStack extends cdk.Stack {
     // DynamoDB permissions (cross-stack grant → policy references the table ARN)
     props.chatTable.grantReadWriteData(apiFunction);
 
-    // ─── API Gateway ─────────────────────────────────────────
-    this.api = new apigateway.RestApi(this, 'NoorAiApi', {
-      restApiName: 'Noor AI API',
-      deployOptions: {
-        stageName: 'prod',
-        throttlingRateLimit: 50,
-        throttlingBurstLimit: 100,
-      },
-      defaultCorsPreflightOptions: {
-        allowOrigins: apigateway.Cors.ALL_ORIGINS,
-        allowMethods: apigateway.Cors.ALL_METHODS,
-        allowHeaders: ['Content-Type', 'Authorization'],
-      },
+    // ─── Function URL (streaming) ────────────────────────────
+    // Public (AuthType NONE) like the previous API Gateway; CloudFront fronts it.
+    const fnUrl = apiFunction.addFunctionUrl({
+      authType: lambda.FunctionUrlAuthType.NONE,
+      invokeMode: lambda.InvokeMode.RESPONSE_STREAM,
     });
 
-    const lambdaIntegration = new apigateway.LambdaIntegration(apiFunction);
+    // fnUrl.url is "https://<id>.lambda-url.<region>.on.aws/" — CloudFront's
+    // HttpOrigin needs just the host, so strip scheme and trailing slash.
+    this.apiDomain = cdk.Fn.select(2, cdk.Fn.split('/', fnUrl.url));
 
-    // Routes are namespaced under /api to match the backend and CloudFront.
-    const apiRoot = this.api.root.addResource('api');
-    apiRoot.addResource('ask').addMethod('POST', lambdaIntegration);
-    apiRoot.addResource('sessions').addMethod('POST', lambdaIntegration);
-    apiRoot.addResource('health').addMethod('GET', lambdaIntegration);
-
-    new cdk.CfnOutput(this, 'ApiUrl', { value: this.api.url });
+    new cdk.CfnOutput(this, 'FunctionUrl', { value: fnUrl.url });
   }
 }

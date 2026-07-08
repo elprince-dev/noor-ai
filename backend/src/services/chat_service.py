@@ -31,6 +31,22 @@ class ChatService:
         )
         return AskResponse(answer=answer, session_id=request.session_id)
 
+    async def ask_stream(self, request: AskRequest):
+        """Process a question and stream the answer token-by-token.
+
+        Args:
+            request: The validated ask request.
+
+        Yields:
+            Answer text chunks (str).
+        """
+        async for token in self._conversation.astream(
+            question=request.question,
+            session_id=request.session_id,
+            school=request.school,
+        ):
+            yield token
+
     @staticmethod
     def create_session() -> SessionResponse:
         """Create a new conversation session.

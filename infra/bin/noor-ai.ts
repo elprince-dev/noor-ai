@@ -31,5 +31,5 @@ const api = new ApiStack(app, `${APP_PREFIX}-Api`, {
 // (Cross-stack references above make CDK order deploys automatically.)
 new WebStack(app, `${APP_PREFIX}-Web`, {
   env,
-  api: api.api,
+  apiDomain: api.apiDomain,
 });

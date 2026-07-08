@@ -33,16 +33,7 @@ class ConversationChain:
         return prompt | model | StrOutputParser()
 
     async def ask(self, question: str, session_id: str, school: str = "general") -> str:
-        """Ask a question within a conversation session.
-
-        Args:
-            question: The user's question.
-            session_id: Unique session identifier.
-            school: Preferred school of thought.
-
-        Returns:
-            The assistant's response as a string.
-        """
+        """Ask a question and return the full answer (non-streaming)."""
         history = MemoryService.get_history(session_id)
         past_messages = history.messages
 
@@ -53,3 +44,31 @@ class ConversationChain:
         history.add_message(HumanMessage(content=question))
         history.add_message(AIMessage(content=answer))
         return answer
+
+    async def astream(self, question: str, session_id: str, school: str = "general"):
+        """Ask a question and stream the answer token-by-token.
+
+        Yields answer chunks as they are generated. Once the stream completes,
+        the full human + AI turn is persisted to the session history.
+
+        Args:
+            question: The user's question.
+            session_id: Unique session identifier.
+            school: Preferred school of thought.
+
+        Yields:
+            Answer text chunks (str).
+        """
+        history = MemoryService.get_history(session_id)
+        past_messages = history.messages
+
+        chunks: list[str] = []
+        async for chunk in self._chain.astream(
+            {"question": question, "school": school, "history": past_messages}
+        ):
+            chunks.append(chunk)
+            yield chunk
+
+        answer = "".join(chunks)
+        history.add_message(HumanMessage(content=question))
+        history.add_message(AIMessage(content=answer))

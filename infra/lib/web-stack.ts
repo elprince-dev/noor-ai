@@ -1,5 +1,4 @@
 import * as cdk from 'aws-cdk-lib';
-import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
@@ -8,8 +7,8 @@ import { Construct } from 'constructs';
 import * as path from 'path';
 
 export interface WebStackProps extends cdk.StackProps {
-  /** REST API provided by the ApiStack; fronted at /api/* by CloudFront. */
-  readonly api: apigateway.RestApi;
+  /** Lambda Function URL domain (host only) provided by the ApiStack. */
+  readonly apiDomain: string;
 }
 
 /**
@@ -21,7 +20,7 @@ export class WebStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: WebStackProps) {
     super(scope, id, props);
 
-    const { api } = props;
+    const { apiDomain } = props;
 
     // ─── S3: Static Assets ───────────────────────────────────
     const websiteBucket = new s3.Bucket(this, 'WebsiteBucket', {
@@ -38,15 +37,13 @@ export class WebStack extends cdk.Stack {
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
       },
-      // Route /api/* to API Gateway. The backend serves the same /api/* paths,
-      // so CloudFront forwards them as-is (originPath prepends the stage) —
-      // e.g. /api/sessions → /<stage>/api/sessions. No path rewriting needed.
+      // Route /api/* to the Lambda Function URL. The backend serves the same
+      // /api/* paths, so CloudFront forwards them as-is (no path rewriting).
+      // Host header must NOT be forwarded — Function URLs reject a mismatched
+      // Host — hence ALL_VIEWER_EXCEPT_HOST_HEADER.
       additionalBehaviors: {
         '/api/*': {
-          origin: new origins.HttpOrigin(
-            `${api.restApiId}.execute-api.${api.env.region}.amazonaws.com`,
-            { originPath: `/${api.deploymentStage.stageName}` }
-          ),
+          origin: new origins.HttpOrigin(apiDomain),
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.HTTPS_ONLY,
           cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
           originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
