@@ -18,3 +18,12 @@ export const BEDROCK_REGION = 'us-east-1';
 
 /** DynamoDB chat history table name. */
 export const CHAT_TABLE_NAME = 'noor-ai-chat-history';
+
+/** Embedding model for the Knowledge Base (multilingual: Arabic + English). */
+export const EMBEDDING_MODEL_ID = 'cohere.embed-multilingual-v3';
+
+/** Cohere Embed Multilingual v3 output dimensionality. */
+export const EMBEDDING_DIMENSION = 1024;
+
+/** S3 Vectors index name. */
+export const VECTOR_INDEX_NAME = 'noor-ai-corpus-index';

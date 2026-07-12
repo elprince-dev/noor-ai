@@ -11,6 +11,7 @@ import { BEDROCK_MODEL_ID, BEDROCK_REGION } from './config';
 export interface ApiStackProps extends cdk.StackProps {
   /** Chat history table provided by the DataStack. */
   readonly chatTable: dynamodb.ITable;
+  readonly knowledgeBaseId: string;
 }
 
 // AWS Lambda Web Adapter layer — runs the FastAPI app (uvicorn) inside the
@@ -64,6 +65,7 @@ export class ApiStack extends cdk.Stack {
         CHAT_TABLE: props.chatTable.tableName,
         BEDROCK_MODEL_ID: BEDROCK_MODEL_ID,
         BEDROCK_REGION: BEDROCK_REGION,
+        KNOWLEDGE_BASE_ID: props.knowledgeBaseId,
       },
       logGroup: apiLogGroup,
     });
@@ -77,6 +79,16 @@ export class ApiStack extends cdk.Stack {
         resources: [
           'arn:aws:bedrock:*::foundation-model/anthropic.claude*',
           `arn:aws:bedrock:*:${this.account}:inference-profile/*.anthropic.claude*`,
+        ],
+      })
+    );
+
+    // Retrieve permission
+    apiFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['bedrock:Retrieve'],
+        resources: [
+          `arn:aws:bedrock:${this.region}:${this.account}:knowledge-base/${props.knowledgeBaseId}`,
         ],
       })
     );

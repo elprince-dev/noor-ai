@@ -9,6 +9,7 @@ import * as cdk from 'aws-cdk-lib';
 import { DataStack } from '../lib/data-stack';
 import { ApiStack } from '../lib/api-stack';
 import { WebStack } from '../lib/web-stack';
+import { KnowledgeBaseStack } from '../lib/knowledge-base-stack';
 import { APP_PREFIX } from '../lib/config';
 
 const app = new cdk.App();
@@ -21,10 +22,13 @@ const env: cdk.Environment = {
 // Persistence layer — owns long-lived data stores.
 const data = new DataStack(app, `${APP_PREFIX}-Data`, { env });
 
+const kb = new KnowledgeBaseStack(app, `${APP_PREFIX}-KnowledgeBase`, { env });
+
 // Compute / API layer — depends on the data layer.
 const api = new ApiStack(app, `${APP_PREFIX}-Api`, {
   env,
   chatTable: data.chatTable,
+  knowledgeBaseId: kb.knowledgeBaseId,   // NEW
 });
 
 // Delivery layer — depends on the API layer.

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { apiClient, School, AskResponse } from "@/lib/api";
+import { apiClient, School } from "@/lib/api";
 import { ChatWindow } from "@/components/ChatWindow";
 import { SchoolSelector } from "@/components/SchoolSelector";
 import { AuroraBackground } from "@/components/AuroraBackground";
@@ -44,25 +44,49 @@ export default function Home() {
     setInput("");
     setLoading(true);
 
+    // Add a placeholder assistant message that we'll stream into
+    setMessages((prev) => [
+      ...prev,
+      { role: "assistant", content: "", stream: true },
+    ]);
+
     try {
-      const response: AskResponse = await apiClient.ask({
-        question,
-        session_id: sessionId,
-        school,
-      });
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: response.answer, stream: true },
-      ]);
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: t.disclaimer,
-          error: true,
+      await apiClient.ask(
+        { question, session_id: sessionId, school },
+        (chunk) => {
+          setMessages((prev) => {
+            const updated = [...prev];
+            const last = updated[updated.length - 1];
+            if (last && last.role === "assistant") {
+              updated[updated.length - 1] = {
+                ...last,
+                content: last.content + chunk,
+              };
+            }
+            return updated;
+          });
         },
-      ]);
+      );
+    } catch {
+      setMessages((prev) => {
+        const updated = [...prev];
+        const last = updated[updated.length - 1];
+        // If the placeholder is still empty, replace it with the error
+        if (last && last.role === "assistant" && !last.content) {
+          updated[updated.length - 1] = {
+            role: "assistant",
+            content: t.disclaimer,
+            error: true,
+          };
+        } else {
+          updated.push({
+            role: "assistant",
+            content: t.disclaimer,
+            error: true,
+          });
+        }
+        return updated;
+      });
     } finally {
       setLoading(false);
       inputRef.current?.focus();
