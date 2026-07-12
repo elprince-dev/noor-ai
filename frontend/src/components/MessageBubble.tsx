@@ -6,6 +6,11 @@ import remarkGfm from "remark-gfm";
 import { Message } from "@/app/page";
 import { useSettings } from "./SettingsProvider";
 
+const TOOL_LABELS: Record<string, string> = {
+  search_quran: "Searching the Qur'an",
+  search_hadith: "Searching Sahih al-Bukhari",
+};
+
 interface MessageBubbleProps {
   message: Message;
   onGrow?: () => void;
@@ -78,6 +83,45 @@ export function MessageBubble({ message, onGrow }: MessageBubbleProps) {
       </div>
 
       <div className="min-w-0 max-w-[82%]">
+       {/* Agent tool steps (rich streaming) */}
+        {!isError && message.steps && message.steps.length > 0 && (
+          <div className="mb-2 flex flex-col gap-1.5">
+            {message.steps.map((step) => (
+              <div
+                key={step.id}
+                className="flex items-center gap-2 rounded-lg border border-gold-400/20 bg-gold-400/[0.06] px-2.5 py-1.5 text-[11px] text-slate-600 dark:text-slate-300"
+              >
+                {step.done ? (
+                  <svg
+                    className="h-3.5 w-3.5 shrink-0 text-emerald-500"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M20 6 9 17l-5-5" />
+                  </svg>
+                ) : (
+                  <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-gold-400/30 border-t-gold-500" />
+                )}
+                <span className="font-medium">
+                  {TOOL_LABELS[step.tool] ?? step.tool}
+                </span>
+                {step.query && (
+                  <span className="truncate opacity-70">“{step.query}”</span>
+                )}
+                {step.done && (
+                  <span className="ml-auto shrink-0 tabular-nums opacity-60">
+                    {step.count} result{step.count === 1 ? "" : "s"} ·{" "}
+                    {(step.ms! / 1000).toFixed(1)}s
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
         <div
           className={`rounded-2xl rounded-tl-md px-4 py-3 text-sm leading-relaxed ${
             isError
@@ -90,7 +134,7 @@ export function MessageBubble({ message, onGrow }: MessageBubbleProps) {
           ) : (
             <div
               className={`prose prose-sm max-w-none dark:prose-invert prose-h1:text-xl prose-h1:font-bold prose-h2:text-lg prose-h2:font-semibold prose-h3:text-base prose-h3:font-semibold prose-headings:mt-3 prose-headings:mb-1.5 prose-p:my-1.5 prose-ul:my-1.5 prose-li:my-0.5 prose-strong:font-semibold ${
-                !done ? "caret" : ""
+                !done && text ? "caret" : ""
               }`}
             >
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>

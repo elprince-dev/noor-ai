@@ -7,12 +7,23 @@ import { SchoolSelector } from "@/components/SchoolSelector";
 import { AuroraBackground } from "@/components/AuroraBackground";
 import { useSettings } from "@/components/SettingsProvider";
 
+export interface ToolStep {
+  id: string;
+  tool: string;
+  query?: string;
+  ms?: number;
+  count?: number;
+  done: boolean;
+}
+
 export interface Message {
   role: "user" | "assistant";
   content: string;
   error?: boolean;
   /** true while an answer is actively streaming in (drives caret + hides actions) */
   stream?: boolean;
+  /** agent tool calls surfaced in the UI (rich streaming) */
+  steps?: ToolStep[];
 }
 
 export default function Home() {
@@ -50,26 +61,48 @@ export default function Home() {
       { role: "assistant", content: "", stream: true },
     ]);
 
-    try {
-      await apiClient.ask(
-        { question, session_id: sessionId, school },
-        (chunk) => {
-          // Append each streamed token to the last (assistant) message.
-          setMessages((prev) => {
-            const next = [...prev];
-            const last = next[next.length - 1];
-            next[next.length - 1] = { ...last, content: last.content + chunk };
-            return next;
-          });
-        },
-      );
+     // Add a placeholder assistant message that we'll stream into
+    setMessages((prev) => [
+      ...prev,
+      { role: "assistant", content: "", stream: true, steps: [] },
+    ]);
 
-      // Stream finished — clear the flag so the caret stops and actions appear.
-      setMessages((prev) => {
-        const next = [...prev];
-        const last = next[next.length - 1];
-        next[next.length - 1] = { ...last, stream: false };
-        return next;
+    try {
+      await apiClient.ask({ question, session_id: sessionId, school }, (ev) => {
+        setMessages((prev) => {
+          const next = [...prev];
+          const last = { ...next[next.length - 1] };
+          switch (ev.type) {
+            case "token":
+              last.content = last.content + ev.text;
+              break;
+            case "tool_start":
+              // Text before a tool call is preamble — discard it.
+              last.content = "";
+              last.steps = [
+                ...(last.steps ?? []),
+                { id: ev.id, tool: ev.tool, query: ev.query, done: false },
+              ];
+              break;
+            case "tool_end":
+              last.steps = (last.steps ?? []).map((s) =>
+                s.id === ev.id
+                  ? { ...s, done: true, ms: ev.ms, count: ev.count }
+                  : s,
+              );
+              break;
+            case "done":
+              last.stream = false;
+              break;
+            case "error":
+              last.error = true;
+              last.content = t.disclaimer;
+              last.stream = false;
+              break;
+          }
+          next[next.length - 1] = last;
+          return next;
+        });
       });
     } catch {
       setMessages((prev) => {

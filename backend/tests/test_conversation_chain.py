@@ -45,23 +45,47 @@ class TestConversationChain:
     @pytest.mark.asyncio
     @patch("src.chains.conversation.MemoryService")
     @patch("src.chains.conversation.AgentFactory")
-    async def test_astream_yields_only_model_text(self, mock_factory, mock_memory):
-        # Stream mixes tool-node chunks, Converse content blocks (list), plain
-        # strings, and non-text blocks. Only model-node text should surface.
+    async def test_astream_yields_agent_events(self, mock_factory, mock_memory):
+        # A turn with pre-tool preamble, one tool call, then the final answer
+        # (Converse content-block format). Preamble streams to the client but
+        # must be discarded from the persisted answer.
         events = [
-            (_make_chunk([{"type": "tool_use", "id": "t1"}]), {"langgraph_node": "model"}),
-            (_make_chunk("tool output"), {"langgraph_node": "tools"}),
-            (_make_chunk([{"type": "text", "text": "Intentions "}]), {"langgraph_node": "model"}),
-            (_make_chunk([{"type": "text", "text": "matter."}]), {"langgraph_node": "model"}),
-            (_make_chunk(""), {"langgraph_node": "model"}),
+            {
+                "event": "on_chat_model_stream",
+                "data": {"chunk": _make_chunk([{"type": "text", "text": "Let me check. "}])},
+            },
+            {
+                "event": "on_tool_start",
+                "run_id": "run-1",
+                "name": "search_hadith",
+                "data": {"input": {"query": "intentions"}},
+            },
+            {
+                "event": "on_tool_end",
+                "run_id": "run-1",
+                "name": "search_hadith",
+                "data": {"output": "Actions are judged by intentions.\n\nSecond chunk."},
+            },
+            {
+                "event": "on_chat_model_stream",
+                "data": {"chunk": _make_chunk([{"type": "text", "text": "Intentions "}])},
+            },
+            {
+                "event": "on_chat_model_stream",
+                "data": {"chunk": _make_chunk([{"type": "text", "text": "matter."}])},
+            },
+            {
+                "event": "on_chat_model_stream",
+                "data": {"chunk": _make_chunk([{"type": "tool_use", "id": "t1"}])},
+            },
         ]
 
-        async def fake_astream(*args, **kwargs):
+        async def fake_astream_events(*args, **kwargs):
             for event in events:
                 yield event
 
         agent = MagicMock()
-        agent.astream = fake_astream
+        agent.astream_events = fake_astream_events
         mock_factory.get_agent.return_value = agent
         history = MagicMock()
         history.messages = []
@@ -70,11 +94,19 @@ class TestConversationChain:
         from src.chains.conversation import ConversationChain
 
         chain = ConversationChain()
-        tokens = [t async for t in chain.astream("What matters?", "sess-1")]
+        out = [e async for e in chain.astream("What matters?", "sess-1")]
 
-        # 1. only the final-answer text chunks were streamed
-        assert tokens == ["Intentions ", "matter."]
-        # 2. the turn was persisted with the joined answer
+        # 1. structured event sequence: preamble token, tool start/end,
+        #    answer tokens, done. Non-text chunks yield nothing.
+        assert [e.type for e in out] == [
+            "token", "tool_start", "tool_end", "token", "token", "done",
+        ]
+        assert out[0].data["text"] == "Let me check. "
+        assert out[1].data == {"id": "run-1", "tool": "search_hadith", "query": "intentions"}
+        assert out[2].data["tool"] == "search_hadith"
+        assert out[2].data["count"] == 2  # two chunks joined by \n\n
+        assert [e.data["text"] for e in out[3:5]] == ["Intentions ", "matter."]
+        # 2. persisted answer excludes the pre-tool preamble
         assert history.add_message.call_count == 2
         persisted_ai = history.add_message.call_args_list[1][0][0]
         assert persisted_ai.content == "Intentions matter."

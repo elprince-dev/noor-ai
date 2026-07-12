@@ -6,6 +6,7 @@ from src.models.requests import AskRequest
 from src.models.responses import SessionResponse, HealthResponse
 from src.services.chat_service import ChatService
 from src.config import config
+from src.streaming.agent_events import AgentEvent
 
 app = FastAPI(
     title="Noor AI",
@@ -31,24 +32,29 @@ chat_service = ChatService()
 
 @router.post("/ask")
 async def ask(request: AskRequest):
-    """Ask an Islamic knowledge question. Streams the answer token-by-token."""
+    """Ask an Islamic knowledge question. Streams NDJSON agent events."""
     stream = chat_service.ask_stream(request)
 
-    # Pull the first token eagerly so pre-stream failures (e.g. Bedrock access
+    # Pull the first event eagerly so pre-stream failures (e.g. Bedrock access
     # errors) surface as a proper 500 instead of a broken 200 stream.
     try:
         first = await stream.__anext__()
     except StopAsyncIteration:
-        first = ""
+        first = None
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    async def token_stream():
-        yield first
-        async for token in stream:
-            yield token
+    async def event_stream():
+        try:
+            if first is not None:
+                yield first.to_ndjson()
+            async for event in stream:
+                yield event.to_ndjson()
+        except Exception as e:
+            # Surface mid-stream failures as an error event the UI can show.
+            yield AgentEvent.error(str(e)).to_ndjson()
 
-    return StreamingResponse(token_stream(), media_type="text/plain; charset=utf-8")
+    return StreamingResponse(event_stream(), media_type="application/x-ndjson")
 
 
 @router.post("/sessions", response_model=SessionResponse)

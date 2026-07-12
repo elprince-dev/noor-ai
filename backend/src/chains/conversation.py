@@ -1,17 +1,30 @@
+import time
+
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from src.services.agent_factory import AgentFactory
 from src.services.llm_service import LLMService
 from src.services.memory_service import MemoryService
+from src.streaming.agent_events import AgentEvent
+
+
+def _count_results(output) -> int:
+    """Count grounded chunks in a tool's output string (chunks joined by \\n\\n)."""
+    content = getattr(output, "content", output)
+    if not isinstance(content, str) or not content.strip():
+        return 0
+    if content.startswith("(No relevant"):
+        return 0
+    return content.count("\n\n") + 1
 
 
 class ConversationChain:
     """Runs the agentic RAG turn with DynamoDB-backed history.
 
-    Each turn: load history → run the tool-calling agent (which decides when to
-    search Quran/hadith) → stream the final answer → persist. The agent loop
-    runs server-side; only the final answer tokens are streamed to the client
-    (approach A), so the existing streaming contract is unchanged.
+    Each turn: load history → run the tool-calling agent → stream structured
+    events (tool start/end + answer tokens) → persist. Text emitted before a
+    tool call is preamble and is discarded from the persisted answer; the same
+    rule is applied client-side so only the final answer is shown.
     """
 
     def __init__(self):
@@ -35,35 +48,48 @@ class ConversationChain:
         messages = self._build_messages(question, school, history.messages)
 
         result = await self._agent.ainvoke({"messages": messages})
-        answer = result["messages"][-1].content
+        answer = LLMService.extract_text(result["messages"][-1].content)
 
         history.add_message(HumanMessage(content=question))
         history.add_message(AIMessage(content=answer))
         return answer
 
     async def astream(self, question: str, session_id: str, school: str = "general"):
-        """Run the agent and stream only the final answer token-by-token."""
+        """Run the agent and yield AgentEvents (tool steps + answer tokens)."""
         history = MemoryService.get_history(session_id)
         messages = self._build_messages(question, school, history.messages)
 
-        parts: list[str] = []
-        # stream_mode="messages" yields (message_chunk, metadata) tuples for
-        # every LLM token across the loop. We forward only assistant answer
-        # text and drop tool-call / tool-result chunks so the client sees just
-        # the final answer streaming in.
-        async for chunk, metadata in self._agent.astream(
-            {"messages": messages}, stream_mode="messages"
-        ):
-            # Skip tokens emitted while the model is calling tools; only the
-            # final answer node should reach the user.
-            if metadata.get("langgraph_node") != "model":
-                continue
-            text = LLMService.extract_text(getattr(chunk, "content", None))
-            if not text:
-                continue
-            parts.append(text)
-            yield text
+        answer_parts: list[str] = []
+        tool_starts: dict[str, float] = {}
 
-        answer = "".join(parts)
+        async for event in self._agent.astream_events(
+            {"messages": messages}, version="v2"
+        ):
+            kind = event["event"]
+
+            if kind == "on_chat_model_stream":
+                chunk = event["data"]["chunk"]
+                text = LLMService.extract_text(getattr(chunk, "content", None))
+                if text:
+                    answer_parts.append(text)
+                    yield AgentEvent.token(text)
+
+            elif kind == "on_tool_start":
+                # Any answer text so far was pre-tool preamble — discard it.
+                answer_parts.clear()
+                run_id = event["run_id"]
+                tool_starts[run_id] = time.monotonic()
+                query = (event["data"].get("input") or {}).get("query", "")
+                yield AgentEvent.tool_start(run_id, event["name"], query)
+
+            elif kind == "on_tool_end":
+                run_id = event["run_id"]
+                start = tool_starts.pop(run_id, None)
+                ms = int((time.monotonic() - start) * 1000) if start else 0
+                count = _count_results(event["data"].get("output"))
+                yield AgentEvent.tool_end(run_id, event["name"], ms, count)
+
+        answer = "".join(answer_parts)
         history.add_message(HumanMessage(content=question))
         history.add_message(AIMessage(content=answer))
+        yield AgentEvent.done()

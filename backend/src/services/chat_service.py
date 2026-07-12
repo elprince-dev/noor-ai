@@ -32,20 +32,17 @@ class ChatService:
         return AskResponse(answer=answer, session_id=request.session_id)
 
     async def ask_stream(self, request: AskRequest):
-        """Process a question and stream the answer token-by-token.
-
-        Args:
-            request: The validated ask request.
+        """Process a question and stream structured AgentEvents.
 
         Yields:
-            Answer text chunks (str).
+            AgentEvent objects (tool steps + answer tokens + done).
         """
-        async for token in self._conversation.astream(
+        async for event in self._conversation.astream(
             question=request.question,
             session_id=request.session_id,
             school=request.school,
         ):
-            yield token
+            yield event
 
     @staticmethod
     def create_session() -> SessionResponse:
