@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { Message } from "@/app/page";
 import { useSettings } from "./SettingsProvider";
 import { useTypewriter } from "@/lib/useTypewriter";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface MessageBubbleProps {
   message: Message;
@@ -85,7 +87,17 @@ export function MessageBubble({ message, onGrow }: MessageBubbleProps) {
               : "glass text-ink-800 dark:text-slate-100"
           }`}
         >
-          <p className={`whitespace-pre-wrap ${!done ? "caret" : ""}`}>{text}</p>
+          {isError ? (
+            <p className={`whitespace-pre-wrap ${!done ? "caret" : ""}`}>{text}</p>
+          ) : (
+            <div
+              className={`prose prose-sm max-w-none dark:prose-invert prose-headings:mt-3 prose-headings:mb-1.5 prose-p:my-1.5 prose-ul:my-1.5 prose-li:my-0.5 prose-headings:font-semibold ${
+                !done ? "caret" : ""
+              }`}
+            >
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+            </div>
+          )}
         </div>
 
         {/* Actions (assistant only, once fully typed) */}
