@@ -21,6 +21,8 @@ class Config:
     bedrock_region: str = os.environ.get("BEDROCK_REGION", "us-east-1")
     session_ttl_hours: int = int(os.environ.get("SESSION_TTL_HOURS", "72"))
     max_history_messages: int = int(os.environ.get("MAX_HISTORY_MESSAGES", "20"))
+    knowledge_base_id: str = os.environ.get("KNOWLEDGE_BASE_ID", "")
+    retrieval_top_k: int = int(os.environ.get("RETRIEVAL_TOP_K", "5"))
 
 
 config = Config()
