@@ -29,3 +29,22 @@ class LLMService:
                 max_tokens=2048,
             )
         return cls._instance
+
+    @staticmethod
+    def extract_text(content) -> str:
+        """Extract plain text from a message (chunk) content payload.
+
+        ChatBedrockConverse (Converse API) emits content as a list of blocks,
+        e.g. [{"type": "text", "text": "..."}], while other providers emit a
+        plain string. Handles both; non-text blocks (tool use, etc.) are
+        ignored. Kept here so model-format knowledge stays in the LLM layer.
+        """
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            return "".join(
+                block.get("text", "")
+                for block in content
+                if isinstance(block, dict) and block.get("type") == "text"
+            )
+        return ""

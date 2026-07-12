@@ -1,79 +1,69 @@
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
+from src.services.agent_factory import AgentFactory
 from src.services.llm_service import LLMService
 from src.services.memory_service import MemoryService
-from src.services.retrieval_service import RetrievalService
-from src.services.context_builder import ContextBuilder
-from src.prompts.islamic_qa import SYSTEM_PROMPT
 
 
 class ConversationChain:
-    """Builds and runs the conversational RAG chain with DynamoDB-backed history.
+    """Runs the agentic RAG turn with DynamoDB-backed history.
 
-    Each turn: retrieve grounded context → load history → invoke prompt → model
-    → parser → persist. Retrieval is a single upfront call, so streaming is
-    unaffected (retrieve, then stream the answer).
+    Each turn: load history → run the tool-calling agent (which decides when to
+    search Quran/hadith) → stream the final answer → persist. The agent loop
+    runs server-side; only the final answer tokens are streamed to the client
+    (approach A), so the existing streaming contract is unchanged.
     """
 
     def __init__(self):
-        self._chain = self._build_chain()
+        self._agent = AgentFactory.get_agent()
 
-    def _build_chain(self):
-        """Build the base chain: prompt → model → parser."""
-        prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system", SYSTEM_PROMPT),
-                MessagesPlaceholder("history"),
-                ("human", "{question}"),
-            ]
-        )
-        model = LLMService.get_model()
-        return prompt | model | StrOutputParser()
-
-    def _retrieve_context(self, question: str) -> str:
-        """Retrieve grounded evidence and format it for the prompt."""
-        chunks = RetrievalService.retrieve(question)
-        return ContextBuilder.build(chunks)
+    def _build_messages(self, question: str, school: str, past_messages: list):
+        """Assemble the message list for the agent: school note + history + question."""
+        messages: list = []
+        if school and school != "general":
+            messages.append(
+                SystemMessage(content=f"The user's preferred madhab is {school}. "
+                                      f"Lead with that school's position.")
+            )
+        messages.extend(past_messages)
+        messages.append(HumanMessage(content=question))
+        return messages
 
     async def ask(self, question: str, session_id: str, school: str = "general") -> str:
         """Ask a question and return the full answer (non-streaming)."""
-        context = self._retrieve_context(question)
         history = MemoryService.get_history(session_id)
-        past_messages = history.messages
+        messages = self._build_messages(question, school, history.messages)
 
-        answer = await self._chain.ainvoke(
-            {
-                "question": question,
-                "school": school,
-                "context": context,
-                "history": past_messages,
-            }
-        )
+        result = await self._agent.ainvoke({"messages": messages})
+        answer = result["messages"][-1].content
 
         history.add_message(HumanMessage(content=question))
         history.add_message(AIMessage(content=answer))
         return answer
 
     async def astream(self, question: str, session_id: str, school: str = "general"):
-        """Ask a question and stream the answer token-by-token."""
-        context = self._retrieve_context(question)
+        """Run the agent and stream only the final answer token-by-token."""
         history = MemoryService.get_history(session_id)
-        past_messages = history.messages
+        messages = self._build_messages(question, school, history.messages)
 
-        chunks: list[str] = []
-        async for chunk in self._chain.astream(
-            {
-                "question": question,
-                "school": school,
-                "context": context,
-                "history": past_messages,
-            }
+        parts: list[str] = []
+        # stream_mode="messages" yields (message_chunk, metadata) tuples for
+        # every LLM token across the loop. We forward only assistant answer
+        # text and drop tool-call / tool-result chunks so the client sees just
+        # the final answer streaming in.
+        async for chunk, metadata in self._agent.astream(
+            {"messages": messages}, stream_mode="messages"
         ):
-            chunks.append(chunk)
-            yield chunk
+            # Skip tokens emitted while the model is calling tools; only the
+            # final answer node should reach the user.
+            if metadata.get("langgraph_node") != "model":
+                continue
+            text = LLMService.extract_text(getattr(chunk, "content", None))
+            if not text:
+                continue
+            parts.append(text)
+            yield text
 
-        answer = "".join(chunks)
+        answer = "".join(parts)
         history.add_message(HumanMessage(content=question))
         history.add_message(AIMessage(content=answer))
