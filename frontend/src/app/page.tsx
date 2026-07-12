@@ -11,7 +11,7 @@ export interface Message {
   role: "user" | "assistant";
   content: string;
   error?: boolean;
-  /** true only for a freshly received answer so it plays the typewriter effect */
+  /** true while an answer is actively streaming in (drives caret + hides actions) */
   stream?: boolean;
 }
 
@@ -54,38 +54,32 @@ export default function Home() {
       await apiClient.ask(
         { question, session_id: sessionId, school },
         (chunk) => {
+          // Append each streamed token to the last (assistant) message.
           setMessages((prev) => {
-            const updated = [...prev];
-            const last = updated[updated.length - 1];
-            if (last && last.role === "assistant") {
-              updated[updated.length - 1] = {
-                ...last,
-                content: last.content + chunk,
-              };
-            }
-            return updated;
+            const next = [...prev];
+            const last = next[next.length - 1];
+            next[next.length - 1] = { ...last, content: last.content + chunk };
+            return next;
           });
         },
       );
+
+      // Stream finished — clear the flag so the caret stops and actions appear.
+      setMessages((prev) => {
+        const next = [...prev];
+        const last = next[next.length - 1];
+        next[next.length - 1] = { ...last, stream: false };
+        return next;
+      });
     } catch {
       setMessages((prev) => {
-        const updated = [...prev];
-        const last = updated[updated.length - 1];
-        // If the placeholder is still empty, replace it with the error
-        if (last && last.role === "assistant" && !last.content) {
-          updated[updated.length - 1] = {
-            role: "assistant",
-            content: t.disclaimer,
-            error: true,
-          };
-        } else {
-          updated.push({
-            role: "assistant",
-            content: t.disclaimer,
-            error: true,
-          });
-        }
-        return updated;
+        const next = [...prev];
+        next[next.length - 1] = {
+          role: "assistant",
+          content: t.disclaimer,
+          error: true,
+        };
+        return next;
       });
     } finally {
       setLoading(false);

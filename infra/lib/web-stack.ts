@@ -5,10 +5,16 @@ import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import { Construct } from 'constructs';
 import * as path from 'path';
+import * as acm from 'aws-cdk-lib/aws-certificatemanager';
+import * as route53 from 'aws-cdk-lib/aws-route53';
+import * as targets from 'aws-cdk-lib/aws-route53-targets';
 
 export interface WebStackProps extends cdk.StackProps {
   /** Lambda Function URL domain (host only) provided by the ApiStack. */
   readonly apiDomain: string;
+  readonly domainName: string;
+  readonly hostedZone: route53.IHostedZone;
+  readonly certificate: acm.ICertificate;
 }
 
 /**
@@ -32,6 +38,8 @@ export class WebStack extends cdk.Stack {
 
     // ─── CloudFront Distribution ─────────────────────────────
     const distribution = new cloudfront.Distribution(this, 'Distribution', {
+      domainNames: [props.domainName],
+      certificate: props.certificate,
       defaultBehavior: {
         origin: origins.S3BucketOrigin.withOriginAccessControl(websiteBucket),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
@@ -76,6 +84,14 @@ export class WebStack extends cdk.Stack {
       destinationBucket: websiteBucket,
       distribution,
       distributionPaths: ['/*'], // Invalidate cache on deploy
+    });
+
+    // Point the subdomain at CloudFront (alias = zero-cost, apex-capable A record).
+    new route53.ARecord(this, 'SiteAliasRecord', {
+      zone: props.hostedZone,
+      target: route53.RecordTarget.fromAlias(
+        new targets.CloudFrontTarget(distribution),
+      ),
     });
 
     new cdk.CfnOutput(this, 'WebsiteUrl', {

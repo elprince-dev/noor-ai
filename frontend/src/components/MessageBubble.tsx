@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Message } from "@/app/page";
-import { useSettings } from "./SettingsProvider";
-import { useTypewriter } from "@/lib/useTypewriter";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { Message } from "@/app/page";
+import { useSettings } from "./SettingsProvider";
 
 interface MessageBubbleProps {
   message: Message;
@@ -18,17 +17,16 @@ export function MessageBubble({ message, onGrow }: MessageBubbleProps) {
   const isError = !!message.error;
   const [copied, setCopied] = useState(false);
 
-  // Only assistant answers flagged `stream` animate; everything else is instant.
-  const { shown, done } = useTypewriter(
-    message.content,
-    !isUser && !isError && !!message.stream,
-  );
-  const text = isUser || isError ? message.content : shown;
+  // Text streams in directly from the network (page.tsx appends tokens to
+  // `content`). No client-side typewriter — the stream IS the animation.
+  // `done` is true once page.tsx clears the `stream` flag on completion.
+  const text = message.content;
+  const done = isUser || isError || !message.stream;
 
-  // Keep the view pinned to the bottom while the answer types out.
+  // Keep the view pinned to the bottom while the answer streams in.
   useEffect(() => {
     if (!done) onGrow?.();
-  }, [shown, done, onGrow]);
+  }, [text, done, onGrow]);
 
   const copy = async () => {
     try {
@@ -88,10 +86,10 @@ export function MessageBubble({ message, onGrow }: MessageBubbleProps) {
           }`}
         >
           {isError ? (
-            <p className={`whitespace-pre-wrap ${!done ? "caret" : ""}`}>{text}</p>
+            <p className="whitespace-pre-wrap">{text}</p>
           ) : (
             <div
-              className={`prose prose-sm max-w-none dark:prose-invert prose-headings:mt-3 prose-headings:mb-1.5 prose-p:my-1.5 prose-ul:my-1.5 prose-li:my-0.5 prose-headings:font-semibold ${
+              className={`prose prose-sm max-w-none dark:prose-invert prose-h1:text-xl prose-h1:font-bold prose-h2:text-lg prose-h2:font-semibold prose-h3:text-base prose-h3:font-semibold prose-headings:mt-3 prose-headings:mb-1.5 prose-p:my-1.5 prose-ul:my-1.5 prose-li:my-0.5 prose-strong:font-semibold ${
                 !done ? "caret" : ""
               }`}
             >
@@ -100,7 +98,7 @@ export function MessageBubble({ message, onGrow }: MessageBubbleProps) {
           )}
         </div>
 
-        {/* Actions (assistant only, once fully typed) */}
+        {/* Actions (assistant only, once streaming completes) */}
         {!isError && done && (
           <div className="mt-1.5 flex items-center gap-3 px-1 opacity-0 transition-opacity group-hover:opacity-100">
             <button
