@@ -3,20 +3,22 @@
 import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Message } from "@/app/page";
+import { Message } from "@/lib/types";
 import { useSettings } from "./SettingsProvider";
-
-const TOOL_LABELS: Record<string, string> = {
-  search_quran: "Searching the Qur'an",
-  search_hadith: "Searching Sahih al-Bukhari",
-};
 
 interface MessageBubbleProps {
   message: Message;
+  isLast?: boolean;
+  onRegenerate?: () => void;
   onGrow?: () => void;
 }
 
-export function MessageBubble({ message, onGrow }: MessageBubbleProps) {
+export function MessageBubble({
+  message,
+  isLast,
+  onRegenerate,
+  onGrow,
+}: MessageBubbleProps) {
   const { t } = useSettings();
   const isUser = message.role === "user";
   const isError = !!message.error;
@@ -24,7 +26,6 @@ export function MessageBubble({ message, onGrow }: MessageBubbleProps) {
 
   // Text streams in directly from the network (page.tsx appends tokens to
   // `content`). No client-side typewriter — the stream IS the animation.
-  // `done` is true once page.tsx clears the `stream` flag on completion.
   const text = message.content;
   const done = isUser || isError || !message.stream;
 
@@ -68,6 +69,12 @@ export function MessageBubble({ message, onGrow }: MessageBubbleProps) {
     );
   }
 
+  // While the placeholder is still empty (no text, no tool steps), the
+  // ChatWindow typing indicator covers this state — render nothing.
+  if (!isError && !done && !text && !(message.steps?.length ?? 0)) {
+    return null;
+  }
+
   /* ── Assistant / error message ───────────────────────────────── */
   return (
     <div className="group flex animate-fade-up items-start gap-3">
@@ -83,7 +90,7 @@ export function MessageBubble({ message, onGrow }: MessageBubbleProps) {
       </div>
 
       <div className="min-w-0 max-w-[82%]">
-       {/* Agent tool steps (rich streaming) */}
+        {/* Agent tool steps (rich streaming) */}
         {!isError && message.steps && message.steps.length > 0 && (
           <div className="mb-2 flex flex-col gap-1.5">
             {message.steps.map((step) => (
@@ -107,44 +114,49 @@ export function MessageBubble({ message, onGrow }: MessageBubbleProps) {
                   <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-gold-400/30 border-t-gold-500" />
                 )}
                 <span className="font-medium">
-                  {TOOL_LABELS[step.tool] ?? step.tool}
+                  {t.toolLabels[step.tool] ?? step.tool}
                 </span>
                 {step.query && (
                   <span className="truncate opacity-70">“{step.query}”</span>
                 )}
                 {step.done && (
-                  <span className="ml-auto shrink-0 tabular-nums opacity-60">
-                    {step.count} result{step.count === 1 ? "" : "s"} ·{" "}
-                    {(step.ms! / 1000).toFixed(1)}s
+                  <span className="ms-auto shrink-0 tabular-nums opacity-60">
+                    {t.resultsCount(step.count ?? 0)} ·{" "}
+                    {((step.ms ?? 0) / 1000).toFixed(1)}s
                   </span>
                 )}
               </div>
             ))}
           </div>
         )}
-        <div
-          className={`rounded-2xl rounded-tl-md px-4 py-3 text-sm leading-relaxed ${
-            isError
-              ? "border border-crimson-500/40 bg-crimson-500/10 text-crimson-600 dark:text-crimson-100"
-              : "glass text-ink-800 dark:text-slate-100"
-          }`}
-        >
-          {isError ? (
-            <p className="whitespace-pre-wrap">{text}</p>
-          ) : (
-            <div
-              className={`prose prose-sm max-w-none dark:prose-invert prose-h1:text-xl prose-h1:font-bold prose-h2:text-lg prose-h2:font-semibold prose-h3:text-base prose-h3:font-semibold prose-headings:mt-3 prose-headings:mb-1.5 prose-p:my-1.5 prose-ul:my-1.5 prose-li:my-0.5 prose-strong:font-semibold ${
-                !done && text ? "caret" : ""
-              }`}
-            >
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
-            </div>
-          )}
-        </div>
+
+        {(text || isError) && (
+          <div
+            className={`rounded-2xl rounded-tl-md px-4 py-3 text-sm leading-relaxed ${
+              isError
+                ? "border border-crimson-500/40 bg-crimson-500/10 text-crimson-600 dark:text-crimson-100"
+                : "glass text-ink-800 dark:text-slate-100"
+            }`}
+          >
+            {isError ? (
+              <p className="whitespace-pre-wrap">{text}</p>
+            ) : (
+              <div
+                className={`prose prose-sm max-w-none dark:prose-invert prose-h1:text-xl prose-h1:font-bold prose-h2:text-lg prose-h2:font-semibold prose-h3:text-base prose-h3:font-semibold prose-headings:mt-3 prose-headings:mb-1.5 prose-p:my-1.5 prose-ul:my-1.5 prose-li:my-0.5 prose-strong:font-semibold prose-blockquote:border-s-gold-400 prose-blockquote:bg-gold-400/[0.06] prose-blockquote:rounded-e-lg prose-blockquote:py-1 prose-blockquote:pe-3 prose-blockquote:font-normal prose-blockquote:not-italic ${
+                  !done && text ? "caret" : ""
+                }`}
+              >
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {text}
+                </ReactMarkdown>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Actions (assistant only, once streaming completes) */}
-        {!isError && done && (
-          <div className="mt-1.5 flex items-center gap-3 px-1 opacity-0 transition-opacity group-hover:opacity-100">
+        {!isError && done && text && (
+          <div className="mt-1.5 flex items-center gap-3 px-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
             <button
               onClick={copy}
               className="flex items-center gap-1.5 text-[11px] font-medium text-slate-400 transition-colors hover:text-gold-500 dark:text-slate-500 dark:hover:text-gold-300"
@@ -152,7 +164,7 @@ export function MessageBubble({ message, onGrow }: MessageBubbleProps) {
               {copied ? (
                 <>
                   <svg
-                    className="h-3.5 w-3.5"
+                    className="h-3.5 w-3.5 text-emerald-500"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
@@ -182,6 +194,27 @@ export function MessageBubble({ message, onGrow }: MessageBubbleProps) {
                 </>
               )}
             </button>
+
+            {isLast && onRegenerate && (
+              <button
+                onClick={onRegenerate}
+                className="flex items-center gap-1.5 text-[11px] font-medium text-slate-400 transition-colors hover:text-royal-500 dark:text-slate-500 dark:hover:text-royal-300"
+              >
+                <svg
+                  className="h-3.5 w-3.5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                  <path d="M3 3v5h5" />
+                </svg>
+                {t.regenerate}
+              </button>
+            )}
           </div>
         )}
       </div>

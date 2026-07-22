@@ -1,45 +1,71 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiClient, School } from "@/lib/api";
+import { Message } from "@/lib/types";
+import {
+  Conversation,
+  loadConversations,
+  newId,
+  saveConversations,
+  titleFrom,
+} from "@/lib/chatStore";
 import { ChatWindow } from "@/components/ChatWindow";
 import { SchoolSelector } from "@/components/SchoolSelector";
 import { AuroraBackground } from "@/components/AuroraBackground";
+import { Sidebar } from "@/components/Sidebar";
 import { useSettings } from "@/components/SettingsProvider";
 
-export interface ToolStep {
-  id: string;
-  tool: string;
-  query?: string;
-  ms?: number;
-  count?: number;
-  done: boolean;
-}
+export type { Message, ToolStep } from "@/lib/types";
 
-export interface Message {
-  role: "user" | "assistant";
-  content: string;
-  error?: boolean;
-  /** true while an answer is actively streaming in (drives caret + hides actions) */
-  stream?: boolean;
-  /** agent tool calls surfaced in the UI (rich streaming) */
-  steps?: ToolStep[];
-}
+const SIDEBAR_KEY = "noor.sidebar";
 
 export default function Home() {
   const { t, dir, theme, toggleTheme, toggleLang } = useSettings();
+
+  // ── Conversations ──
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+
+  // ── Chat state ──
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sessionId, setSessionId] = useState<string>("");
   const [school, setSchool] = useState<School>("general");
   const [loading, setLoading] = useState(false);
+
+  // ── UI state ──
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const lastQuestionRef = useRef<string>("");
+
+  /* ── Hydrate persisted state ─────────────────────────────────── */
+  useEffect(() => {
+    setConversations(loadConversations());
+    const stored = localStorage.getItem(SIDEBAR_KEY);
+    // Default: open on desktop, closed on mobile.
+    const isDesktop = window.matchMedia("(min-width: 1024px)").matches;
+    setSidebarOpen(stored !== null ? stored === "1" : isDesktop);
+    setHydrated(true);
+  }, []);
 
   useEffect(() => {
     apiClient.createSession().then((res) => setSessionId(res.session_id));
   }, []);
 
-  // Auto-grow the composer textarea up to a max height.
+  // Persist conversations whenever they change (post-hydration).
+  useEffect(() => {
+    if (hydrated) saveConversations(conversations);
+  }, [conversations, hydrated]);
+
+  const setSidebar = (open: boolean) => {
+    setSidebarOpen(open);
+    localStorage.setItem(SIDEBAR_KEY, open ? "1" : "0");
+  };
+
+  /* ── Composer auto-grow ──────────────────────────────────────── */
   useEffect(() => {
     const el = inputRef.current;
     if (!el) return;
@@ -47,77 +73,152 @@ export default function Home() {
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }, [input]);
 
+  /* ── Sync messages into the active conversation ──────────────── */
+  const syncConversation = useCallback(
+    (id: string, msgs: Message[], convSchool: School, convSession: string) => {
+      setConversations((prev) => {
+        const idx = prev.findIndex((c) => c.id === id);
+        const firstUser = msgs.find((m) => m.role === "user");
+        const title = firstUser ? titleFrom(firstUser.content) : t.newChat;
+        const now = Date.now();
+        if (idx === -1) {
+          return [
+            {
+              id,
+              title,
+              createdAt: now,
+              updatedAt: now,
+              school: convSchool,
+              sessionId: convSession,
+              messages: msgs,
+            },
+            ...prev,
+          ];
+        }
+        const next = [...prev];
+        next[idx] = {
+          ...next[idx],
+          title: next[idx].title === t.newChat ? title : next[idx].title,
+          updatedAt: now,
+          school: convSchool,
+          messages: msgs,
+        };
+        return next;
+      });
+    },
+    [t.newChat],
+  );
+
+  /* ── Send / stream ───────────────────────────────────────────── */
   const send = async (text: string) => {
     const question = text.trim();
     if (!question || !sessionId || loading) return;
 
-    setMessages((prev) => [...prev, { role: "user", content: question }]);
+    lastQuestionRef.current = question;
+    const convId = activeId ?? newId();
+    if (!activeId) setActiveId(convId);
+
+    const base: Message[] = [
+      ...messages,
+      { role: "user", content: question },
+      { role: "assistant", content: "", stream: true, steps: [] },
+    ];
+    setMessages(base);
     setInput("");
     setLoading(true);
 
-    // Add a placeholder assistant message that we'll stream into
-    setMessages((prev) => [
-      ...prev,
-      { role: "assistant", content: "", stream: true },
-    ]);
+    const controller = new AbortController();
+    abortRef.current = controller;
 
-     // Add a placeholder assistant message that we'll stream into
-    setMessages((prev) => [
-      ...prev,
-      { role: "assistant", content: "", stream: true, steps: [] },
-    ]);
+    let working = base;
+    const update = (mutate: (last: Message) => Message) => {
+      working = [...working];
+      working[working.length - 1] = mutate({ ...working[working.length - 1] });
+      setMessages(working);
+    };
 
     try {
-      await apiClient.ask({ question, session_id: sessionId, school }, (ev) => {
-        setMessages((prev) => {
-          const next = [...prev];
-          const last = { ...next[next.length - 1] };
+      await apiClient.ask(
+        { question, session_id: sessionId, school },
+        (ev) => {
           switch (ev.type) {
             case "token":
-              last.content = last.content + ev.text;
+              update((last) => ({ ...last, content: last.content + ev.text }));
               break;
             case "tool_start":
-              // Text before a tool call is preamble — discard it.
-              last.content = "";
-              last.steps = [
-                ...(last.steps ?? []),
-                { id: ev.id, tool: ev.tool, query: ev.query, done: false },
-              ];
+              update((last) => ({
+                ...last,
+                content: "", // text before a tool call is preamble — discard
+                steps: [
+                  ...(last.steps ?? []),
+                  { id: ev.id, tool: ev.tool, query: ev.query, done: false },
+                ],
+              }));
               break;
             case "tool_end":
-              last.steps = (last.steps ?? []).map((s) =>
-                s.id === ev.id
-                  ? { ...s, done: true, ms: ev.ms, count: ev.count }
-                  : s,
-              );
+              update((last) => ({
+                ...last,
+                steps: (last.steps ?? []).map((s) =>
+                  s.id === ev.id
+                    ? { ...s, done: true, ms: ev.ms, count: ev.count }
+                    : s,
+                ),
+              }));
               break;
             case "done":
-              last.stream = false;
+              update((last) => ({ ...last, stream: false }));
               break;
             case "error":
-              last.error = true;
-              last.content = t.disclaimer;
-              last.stream = false;
+              update((last) => ({
+                ...last,
+                error: true,
+                content: t.disclaimer,
+                stream: false,
+              }));
               break;
           }
-          next[next.length - 1] = last;
-          return next;
-        });
-      });
-    } catch {
-      setMessages((prev) => {
-        const next = [...prev];
-        next[next.length - 1] = {
+        },
+        controller.signal,
+      );
+    } catch (err) {
+      if ((err as Error)?.name === "AbortError") {
+        // User stopped generation — keep whatever streamed in.
+        update((last) => ({ ...last, stream: false }));
+      } else {
+        update(() => ({
           role: "assistant",
           content: t.disclaimer,
           error: true,
-        };
-        return next;
-      });
+        }));
+      }
     } finally {
+      abortRef.current = null;
       setLoading(false);
+      syncConversation(convId, working, school, sessionId);
       inputRef.current?.focus();
     }
+  };
+
+  const stopGenerating = () => abortRef.current?.abort();
+
+  const regenerate = () => {
+    if (loading || !lastQuestionRef.current) return;
+    // Drop the last assistant answer, re-ask the same question.
+    setMessages((prev) => {
+      const trimmed = [...prev];
+      while (
+        trimmed.length &&
+        trimmed[trimmed.length - 1].role === "assistant"
+      ) {
+        trimmed.pop();
+      }
+      if (trimmed.length && trimmed[trimmed.length - 1].role === "user") {
+        trimmed.pop();
+      }
+      return trimmed;
+    });
+    // Let state settle before re-sending.
+    setTimeout(() => send(lastQuestionRef.current), 0);
   };
 
   const handleSend = () => send(input);
@@ -129,12 +230,82 @@ export default function Home() {
     }
   };
 
-  const handleNewSession = async () => {
+  /* ── Conversation management ─────────────────────────────────── */
+  const startNewChat = useCallback(async () => {
+    abortRef.current?.abort();
+    setActiveId(null);
+    setMessages([]);
+    lastQuestionRef.current = "";
     const res = await apiClient.createSession();
     setSessionId(res.session_id);
-    setMessages([]);
     inputRef.current?.focus();
+  }, []);
+
+  const selectConversation = (id: string) => {
+    if (id === activeId) return;
+    abortRef.current?.abort();
+    const conv = conversations.find((c) => c.id === id);
+    if (!conv) return;
+    setActiveId(id);
+    setMessages(conv.messages);
+    setSchool(conv.school);
+    setSessionId(conv.sessionId);
+    lastQuestionRef.current =
+      [...conv.messages].reverse().find((m) => m.role === "user")?.content ??
+      "";
+    // Close the drawer on mobile after picking a chat.
+    if (!window.matchMedia("(min-width: 1024px)").matches) setSidebar(false);
   };
+
+  const deleteConversation = (id: string) => {
+    setConversations((prev) => prev.filter((c) => c.id !== id));
+    if (id === activeId) {
+      setActiveId(null);
+      setMessages([]);
+    }
+  };
+
+  const renameConversation = (id: string, title: string) => {
+    setConversations((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, title } : c)),
+    );
+  };
+
+  const clearAll = () => {
+    setConversations([]);
+    setActiveId(null);
+    setMessages([]);
+  };
+
+  /* ── Export current chat as Markdown ─────────────────────────── */
+  const exportChat = () => {
+    if (!messages.length) return;
+    const lines = messages
+      .filter((m) => m.content)
+      .map((m) =>
+        m.role === "user" ? `**${t.you}:** ${m.content}` : `**Noor AI:**\n\n${m.content}`,
+      );
+    const md = `# Noor AI\n\n${lines.join("\n\n---\n\n")}\n\n> ${t.disclaimer}\n`;
+    const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `noor-chat-${new Date().toISOString().slice(0, 10)}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  /* ── Global shortcuts ────────────────────────────────────────── */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        startNewChat();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [startNewChat]);
 
   const hasMessages = messages.length > 0;
 
@@ -142,173 +313,175 @@ export default function Home() {
     <>
       <AuroraBackground />
 
-      <main
-        dir={dir}
-        className="relative z-10 mx-auto flex h-[100dvh] max-w-3xl flex-col px-4 sm:px-6"
-      >
-        {/* ── Header ─────────────────────────────────────────────── */}
-        <header className="flex items-center justify-between gap-4 pb-4 pt-6">
-          <div className="flex items-center gap-3">
-            {/* Crescent mark */}
-            <div className="relative grid h-11 w-11 place-items-center rounded-2xl bg-gold-gradient shadow-gold-sm">
-              <div className="absolute inset-0 rounded-2xl bg-gold-gradient opacity-60 blur-md" />
-              <span className="relative text-xl leading-none text-ink-950">
-                ☾
-              </span>
-            </div>
-            <div className="leading-tight">
-              <h1 className="font-display text-2xl font-extrabold tracking-tight">
-                <span className="text-gold-gradient">Noor</span>{" "}
-                <span className="text-ink-800 dark:text-slate-100">
-                  {t.brandSuffix}
-                </span>
-              </h1>
-              <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                {t.tagline}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {/* Language toggle */}
-            <button
-              onClick={toggleLang}
-              aria-label={t.toggleLang}
-              title={t.toggleLang}
-              className="flex h-9 items-center gap-1.5 rounded-full border border-black/10 bg-black/[0.03] px-3 text-xs font-semibold text-slate-600 transition-all hover:border-royal-400/40 hover:text-royal-500 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:text-white"
-            >
-              <svg
-                className="h-3.5 w-3.5"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <circle cx="12" cy="12" r="10" />
-                <path d="M2 12h20" />
-                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10Z" />
-              </svg>
-              {t.langName}
-            </button>
-
-            {/* Theme toggle */}
-            <button
-              onClick={toggleTheme}
-              aria-label={t.toggleTheme}
-              title={t.toggleTheme}
-              className="grid h-9 w-9 place-items-center rounded-full border border-black/10 bg-black/[0.03] text-slate-600 transition-all hover:border-gold-400/50 hover:text-gold-500 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:text-gold-300"
-            >
-              {theme === "dark" ? (
-                <svg
-                  className="h-4 w-4"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <circle cx="12" cy="12" r="4" />
-                  <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
-                </svg>
-              ) : (
-                <svg
-                  className="h-4 w-4"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
-                </svg>
-              )}
-            </button>
-
-            {hasMessages && (
-              <button
-                onClick={handleNewSession}
-                className="group flex h-9 items-center gap-1.5 rounded-full border border-black/10 bg-black/[0.03] px-3.5 text-xs font-medium text-slate-600 transition-all hover:border-royal-400/40 hover:text-royal-500 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:bg-royal-500/10 dark:hover:text-white"
-              >
-                <svg
-                  className="h-3.5 w-3.5 transition-transform group-hover:rotate-180"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-                  <path d="M3 3v5h5" />
-                </svg>
-                <span className="hidden sm:inline">{t.newChat}</span>
-              </button>
-            )}
-          </div>
-        </header>
-
-        {/* ── School selector ────────────────────────────────────── */}
-        <div className="flex items-center justify-between gap-3 pb-4">
-          <SchoolSelector value={school} onChange={setSchool} />
-          <span className="hidden items-center gap-1.5 text-[11px] font-medium text-slate-500 sm:flex">
-            <span className="h-1.5 w-1.5 animate-glow-pulse rounded-full bg-emerald-400" />
-            {t.status}
-          </span>
-        </div>
-
-        {/* ── Chat ───────────────────────────────────────────────── */}
-        <ChatWindow
-          messages={messages}
-          loading={loading}
-          onPickSuggestion={send}
+      <div dir={dir} className="relative z-10 flex h-[100dvh] overflow-hidden">
+        <Sidebar
+          open={sidebarOpen}
+          onClose={() => setSidebar(false)}
+          conversations={conversations}
+          activeId={activeId}
+          onSelect={selectConversation}
+          onNewChat={startNewChat}
+          onDelete={deleteConversation}
+          onRename={renameConversation}
+          onClearAll={clearAll}
         />
 
-        {/* ── Composer ───────────────────────────────────────────── */}
-        <div className="pb-5 pt-4">
-          <div className="glass group flex items-end gap-2 rounded-2xl p-2 shadow-glass transition-shadow focus-within:shadow-glow">
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              rows={1}
-              placeholder={t.placeholder}
-              disabled={loading}
-              className="max-h-40 flex-1 resize-none bg-transparent px-3 py-2.5 text-sm text-ink-800 placeholder:text-slate-400 focus:outline-none disabled:opacity-50 dark:text-slate-100 dark:placeholder:text-slate-500"
-            />
-            <button
-              onClick={handleSend}
-              disabled={loading || !input.trim()}
-              aria-label={t.send}
-              className="relative grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-xl bg-gold-gradient text-ink-950 shadow-gold-sm transition-all hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
-            >
-              {loading ? (
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-ink-950/40 border-t-ink-950" />
-              ) : (
-                <svg
-                  className="h-5 w-5 rtl:-scale-x-100"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
+        {/* ── Main column ─────────────────────────────────────────── */}
+        <main className="flex min-w-0 flex-1 flex-col">
+          {/* Header */}
+          <header className="relative flex items-center justify-between gap-3 border-b border-black/[0.05] bg-white/40 px-4 py-3 backdrop-blur-xl dark:border-white/[0.05] dark:bg-ink-950/40 sm:px-6">
+            {loading && (
+              <div
+                aria-hidden
+                className="absolute inset-x-0 -bottom-px h-px animate-shimmer bg-gradient-to-r from-transparent via-gold-400 to-transparent"
+                style={{ backgroundSize: "200% 100%" }}
+              />
+            )}
+            <div className="flex min-w-0 items-center gap-2.5">
+              {!sidebarOpen && (
+                <button
+                  onClick={() => setSidebar(true)}
+                  aria-label={t.openSidebar}
+                  title={t.openSidebar}
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-black/10 bg-black/[0.03] text-slate-500 transition-colors hover:border-gold-400/40 hover:text-gold-500 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-300 dark:hover:text-gold-300"
                 >
-                  <path d="m22 2-7 20-4-9-9-4Z" />
-                  <path d="M22 2 11 13" />
-                </svg>
+                  <svg className="h-4 w-4 rtl:-scale-x-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect width="18" height="18" x="3" y="3" rx="2" />
+                    <path d="M9 3v18" />
+                    <path d="m13 9 3 3-3 3" />
+                  </svg>
+                </button>
               )}
-            </button>
+              <SchoolSelector value={school} onChange={setSchool} />
+            </div>
+
+            <div className="flex shrink-0 items-center gap-2">
+              <span className="hidden items-center gap-1.5 text-[11px] font-medium text-slate-500 md:flex">
+                <span className="h-1.5 w-1.5 animate-glow-pulse rounded-full bg-emerald-400" />
+                {t.status}
+              </span>
+
+              {hasMessages && (
+                <button
+                  onClick={exportChat}
+                  aria-label={t.exportChat}
+                  title={t.exportChat}
+                  className="grid h-9 w-9 place-items-center rounded-full border border-black/10 bg-black/[0.03] text-slate-600 transition-all hover:border-royal-400/40 hover:text-royal-500 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:text-white"
+                >
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <path d="M7 10l5 5 5-5" />
+                    <path d="M12 15V3" />
+                  </svg>
+                </button>
+              )}
+
+              <button
+                onClick={toggleLang}
+                aria-label={t.toggleLang}
+                title={t.toggleLang}
+                className="flex h-9 items-center gap-1.5 rounded-full border border-black/10 bg-black/[0.03] px-3 text-xs font-semibold text-slate-600 transition-all hover:border-royal-400/40 hover:text-royal-500 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:text-white"
+              >
+                <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M2 12h20" />
+                  <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10Z" />
+                </svg>
+                {t.langName}
+              </button>
+
+              <button
+                onClick={toggleTheme}
+                aria-label={t.toggleTheme}
+                title={t.toggleTheme}
+                className="grid h-9 w-9 place-items-center rounded-full border border-black/10 bg-black/[0.03] text-slate-600 transition-all hover:border-gold-400/50 hover:text-gold-500 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:text-gold-300"
+              >
+                {theme === "dark" ? (
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="4" />
+                    <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+                  </svg>
+                ) : (
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+                  </svg>
+                )}
+              </button>
+            </div>
+          </header>
+
+          {/* Chat area */}
+          <div className="mx-auto flex w-full max-w-3xl min-h-0 flex-1 flex-col px-4 sm:px-6">
+            <ChatWindow
+              messages={messages}
+              loading={loading}
+              onPickSuggestion={send}
+              onRegenerate={regenerate}
+            />
+
+            {/* ── Composer ── */}
+            <div className="pb-4 pt-3">
+              {loading && (
+                <div className="mb-2.5 flex justify-center">
+                  <button
+                    onClick={stopGenerating}
+                    className="flex items-center gap-2 rounded-full border border-black/10 bg-white/80 px-4 py-1.5 text-xs font-semibold text-slate-600 shadow-sm backdrop-blur transition-all hover:border-crimson-500/40 hover:text-crimson-500 dark:border-white/10 dark:bg-ink-800/80 dark:text-slate-300 dark:hover:text-crimson-400"
+                  >
+                    <span className="grid h-3.5 w-3.5 place-items-center">
+                      <span className="h-2.5 w-2.5 rounded-[3px] bg-current" />
+                    </span>
+                    {t.stop}
+                  </button>
+                </div>
+              )}
+
+              <div className="glass group flex items-end gap-2 rounded-2xl p-2 shadow-glass transition-shadow focus-within:shadow-glow">
+                <textarea
+                  ref={inputRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  rows={1}
+                  placeholder={t.placeholder}
+                  disabled={loading}
+                  className="max-h-40 flex-1 resize-none bg-transparent px-3 py-2.5 text-sm text-ink-800 placeholder:text-slate-400 focus:outline-none disabled:opacity-50 dark:text-slate-100 dark:placeholder:text-slate-500"
+                />
+                <button
+                  onClick={handleSend}
+                  disabled={loading || !input.trim()}
+                  aria-label={t.send}
+                  className="relative grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-xl bg-gold-gradient text-ink-950 shadow-gold-sm transition-all hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
+                >
+                  {loading ? (
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-ink-950/40 border-t-ink-950" />
+                  ) : (
+                    <svg className="h-5 w-5 rtl:-scale-x-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="m22 2-7 20-4-9-9-4Z" />
+                      <path d="M22 2 11 13" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+
+              <div className="mt-2 flex items-center justify-between gap-2 px-1">
+                <p className="hidden text-[10px] text-slate-400 dark:text-slate-500 sm:block">
+                  <kbd className="rounded border border-black/10 bg-black/[0.03] px-1 py-px font-sans dark:border-white/10 dark:bg-white/[0.04]">
+                    Enter
+                  </kbd>{" "}
+                  {t.enterHint} ·{" "}
+                  <kbd className="rounded border border-black/10 bg-black/[0.03] px-1 py-px font-sans dark:border-white/10 dark:bg-white/[0.04]">
+                    Shift+Enter
+                  </kbd>{" "}
+                  {t.shiftEnterHint}
+                </p>
+                <p className="flex-1 text-center text-[11px] text-slate-400 dark:text-slate-500 sm:text-end">
+                  {t.disclaimer}
+                </p>
+              </div>
+            </div>
           </div>
-          <p className="mt-2.5 text-center text-[11px] text-slate-400 dark:text-slate-500">
-            {t.disclaimer}
-          </p>
-        </div>
-      </main>
+        </main>
+      </div>
     </>
   );
 }

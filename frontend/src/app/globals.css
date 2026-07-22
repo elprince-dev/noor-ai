@@ -37,6 +37,13 @@
     color: inherit;
   }
 
+  /* Keyboard-visible focus ring — golden, consistent everywhere */
+  :focus-visible {
+    outline: 2px solid rgba(230, 185, 42, 0.65);
+    outline-offset: 2px;
+    border-radius: 8px;
+  }
+
   /* Refined scrollbar */
   *::-webkit-scrollbar {
     width: 10px;

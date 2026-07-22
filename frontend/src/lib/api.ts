@@ -48,11 +48,13 @@ export class NoorApiClient {
   async ask(
     request: AskRequest,
     onEvent: (event: AgentStreamEvent) => void,
+    signal?: AbortSignal,
   ): Promise<void> {
     const res = await fetch(`${this.baseUrl}/ask`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request),
+      signal,
     });
     if (!res.ok || !res.body) throw new Error(`API error: ${res.status}`);
 
