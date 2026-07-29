@@ -1,0 +1,15 @@
+{
+  "name": "noor-ai-presentation",
+  "private": true,
+  "description": "Marp slide deck for the Noor AI YouTube walkthrough",
+  "scripts": {
+    "html": "marp slides.md --theme-set theme/noor.css --html -o slides.html",
+    "pdf": "marp slides.md --theme-set theme/noor.css --html --allow-local-files -o slides.pdf",
+    "pptx": "marp slides.md --theme-set theme/noor.css --html --allow-local-files -o slides.pptx",
+    "watch": "marp slides.md --theme-set theme/noor.css --html -w -o slides.html",
+    "present": "marp slides.md --theme-set theme/noor.css --html --preview"
+  },
+  "devDependencies": {
+    "@marp-team/marp-cli": "^4.2.3"
+  }
+}
