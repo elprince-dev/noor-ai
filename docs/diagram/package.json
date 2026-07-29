@@ -1,0 +1,12 @@
+{
+  "name": "noor-ai-architecture-diagram",
+  "private": true,
+  "description": "Renders docs/architecture.svg from architecture.dot with official AWS icons",
+  "type": "module",
+  "scripts": {
+    "render": "node render.mjs"
+  },
+  "dependencies": {
+    "@viz-js/viz": "^3.24.0"
+  }
+}

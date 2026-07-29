@@ -44,3 +44,7 @@ Thumbs.db
 ## ─── raw data ─────────────────────────────────────────
 ingest/data/raw/
 ingest/data/corpus/
+# ─── Generated presentation output ───────────────
+docs/presentation/slides.html
+docs/presentation/slides.pdf
+docs/presentation/slides.pptx
