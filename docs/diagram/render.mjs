@@ -62,7 +62,7 @@ ${svc("user", "users", "User")}
     <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="1">
       <TR><TD><FONT POINT-SIZE="12"><B>Ingest pipeline (local)</B></FONT></TD></TR>
       <TR><TD><FONT POINT-SIZE="10" COLOR="${MUTED}">download_data.sh → build_corpus.py → sync.py</FONT></TD></TR>
-      <TR><TD><FONT POINT-SIZE="10" COLOR="${MUTED}">Quran + Sahih al-Bukhari, ~27k files</FONT></TD></TR>
+      <TR><TD><FONT POINT-SIZE="10" COLOR="${MUTED}">Quran + Sahih al-Bukhari + Sahih Muslim, ~43k files</FONT></TD></TR>
     </TABLE>>]
 
   // ── AWS Cloud ───────────────────────────────────────────────────────

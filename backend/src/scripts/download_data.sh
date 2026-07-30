@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Phase 0 — download raw Quran + Sahih al-Bukhari source data.
+# Phase 0 — download raw Quran + Sahih al-Bukhari + Sahih Muslim source data.
 #
 # Sources (open-licensed, verse/hadith-numbered):
 #   Quran  : risan/quran-json       (Arabic + English translation)
-#   Hadith : fawazahmed0/hadith-api (eng + ara editions of Bukhari)
+#   Hadith : fawazahmed0/hadith-api (eng + ara editions of Bukhari and Muslim)
 #
 # Idempotent: safe to re-run. Resolves the repo root from this script's
 # location (backend/src/scripts) so data always lands in ingest/data/raw/.
@@ -27,6 +27,14 @@ curl -fsSL -o "$RAW_DIR/hadith/eng-bukhari.json" \
 echo "→ Sahih al-Bukhari (Arabic)..."
 curl -fsSL -o "$RAW_DIR/hadith/ara-bukhari.json" \
   "https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions/ara-bukhari.min.json"
+
+echo "→ Sahih Muslim (English)..."
+curl -fsSL -o "$RAW_DIR/hadith/eng-muslim.json" \
+  "https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions/eng-muslim.min.json"
+
+echo "→ Sahih Muslim (Arabic)..."
+curl -fsSL -o "$RAW_DIR/hadith/ara-muslim.json" \
+  "https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions/ara-muslim.min.json"
 
 echo ""
 echo "✓ Done. Downloaded into $RAW_DIR :"

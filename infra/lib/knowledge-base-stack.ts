@@ -15,7 +15,7 @@ import {
 /**
  * RAG storage + retrieval layer. Owns the corpus S3 bucket, the S3 Vectors
  * index, and the Bedrock Knowledge Base that embeds (Cohere Multilingual v3)
- * and indexes the Quran + Bukhari corpus. Stateless compute (Api stack)
+ * and indexes the Quran + Bukhari + Muslim corpus. Stateless compute (Api stack)
  * queries this via the bedrock-agent-runtime Retrieve API.
  */
 export class KnowledgeBaseStack extends cdk.Stack {

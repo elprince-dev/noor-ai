@@ -6,7 +6,7 @@ Pipeline position:
 
 Two steps:
   1. Bulk-upload ingest/data/corpus/ to the KB's S3 data-source bucket
-     (uses `aws s3 sync` — far faster than boto3 put_object for ~27k files).
+     (uses `aws s3 sync` — far faster than boto3 put_object for ~43k files).
   2. Start a Bedrock KB ingestion job (StartIngestionJob) and poll to
      completion. The KB chunks (NONE = one file per chunk), embeds each with
      Cohere Multilingual v3, and writes vectors to the S3 Vectors index.

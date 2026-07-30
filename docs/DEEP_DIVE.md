@@ -1,10 +1,11 @@
 # 🌙 Noor AI — Technical Deep Dive
 
-> Companion document to the [Marp presentation](presentation/slides.md).
+> Companion document to the [Marp decks](presentation/) — `slides.md` (portfolio video) and `deep-dive.md` (full technical deck).
 > The main [README](../README.md) covers setup; this covers **how it works inside**.
 
 **Noor AI** is a serverless, agentic RAG application that answers Islamic
-questions grounded in primary sources — the Quran and Sahih al-Bukhari — with
+questions grounded in primary sources — the Quran, Sahih al-Bukhari, and
+Sahih Muslim — with
 verbatim citations it cannot fabricate, madhab-aware rulings, conversation
 memory, and token-by-token streaming. Live at
 [noorai.elprince.net](https://noorai.elprince.net).
@@ -88,8 +89,8 @@ const fnUrl = apiFunction.addFunctionUrl({
 The key design decision lives in the **ingestion pipeline**, not the runtime:
 
 - `build_corpus.py` splits raw dumps into **one file per verse / per hadith**
-  (~27k files), each with a `.metadata.json` sidecar containing a
-  **precomputed citation** string.
+  (~21k sources, ~43k files with sidecars), each with a `.metadata.json`
+  sidecar containing a **precomputed citation** string.
 - Retrieval units are therefore always whole verses/hadith — never truncated
   or merged mid-thought.
 - At answer time, the model quotes the citation *from metadata*; it never

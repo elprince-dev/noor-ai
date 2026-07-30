@@ -2,7 +2,7 @@
 
 **Your light to Islamic knowledge.**
 
-A conversational Islamic Q&A system with Retrieval-Augmented Generation (RAG) over the Quran and Sahih al-Bukhari. Powered by AWS Bedrock (Claude Haiku 4.5 + Cohere embeddings), with streaming responses, conversation memory, verbatim citations, and school-of-thought filtering.
+A conversational Islamic Q&A system with Retrieval-Augmented Generation (RAG) over the Quran, Sahih al-Bukhari, and Sahih Muslim. Powered by AWS Bedrock (Claude Haiku 4.5 + Cohere embeddings), with streaming responses, conversation memory, verbatim citations, and school-of-thought filtering.
 
 Live at **[noorai.elprince.net](https://noorai.elprince.net)**.
 
@@ -14,7 +14,7 @@ Live at **[noorai.elprince.net](https://noorai.elprince.net)**.
 > Regenerate with `cd docs/diagram && npm install && node render.mjs`.
 
 📖 Want the internals? Read the **[Technical Deep Dive](docs/DEEP_DIVE.md)** — components, request flow, and the logic of every major service with code.
-🎬 Presenting it? There's a **[Marp slide deck](docs/presentation/)** built from the deep dive (`cd docs/presentation && npm install && npm run html`).
+🎬 Presenting it? [`docs/presentation/`](docs/presentation/) has two Marp decks — `slides.md` (portfolio video walkthrough) and `deep-dive.md` (full technical deck). Build with `cd docs/presentation && npm install && npm run html`.
 
 **Request flow:** CloudFront serves the static Next.js app from S3 and proxies `/api/*` to a streaming Lambda Function URL — one domain, no CORS. The Lambda runs FastAPI through the [Lambda Web Adapter](https://github.com/awslabs/aws-lambda-web-adapter) (no Docker, no API Gateway). A LangChain agent retrieves relevant verses/hadith from the Bedrock Knowledge Base, loads conversation history from DynamoDB, and streams Claude's answer back as NDJSON events.
 
@@ -103,7 +103,7 @@ Notes:
 ### 4. Build & Ingest the Corpus (RAG)
 
 ```bash
-# 1. Download raw Quran + Bukhari dumps
+# 1. Download raw Quran + Bukhari + Muslim dumps
 bash backend/src/scripts/download_data.sh
 
 # 2. Transform into KB-ready files (one verse/hadith per file + citation metadata)

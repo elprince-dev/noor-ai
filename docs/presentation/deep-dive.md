@@ -57,7 +57,7 @@ something the model writes.
 
 ### For the user
 - Ask in **English or Arabic**
-- Grounded in **Quran + Sahih al-Bukhari**
+- Grounded in **Quran, Sahih al-Bukhari & Sahih Muslim**
 - Inline citations — `[Quran 2:255]` — that are **real**
 - Pick your **madhab** — hanafi, maliki, shafii, hanbali
 - **Live agent steps** — watch it search the sources
@@ -182,8 +182,8 @@ const fnUrl = apiFunction.addFunctionUrl({
 
 ## The Key Decision Lives at Ingestion Time
 
-`build_corpus.py` splits raw dumps into **one file per verse / per hadith**
-— about **27,000 files** — each with a metadata sidecar:
+`build_corpus.py` splits raw dumps (Quran, Bukhari, Muslim) into **one file
+per verse / per hadith** — about **21,000 sources** — each with a metadata sidecar:
 
 ```jsonc
 // ingest/data/corpus/quran/2_255.json.metadata.json
@@ -228,7 +228,7 @@ const vectorIndex = new s3vectors.CfnIndex(this, 'VectorIndex', {
 
 ```
 download_data.sh  →  build_corpus.py  →  sync.py
-   raw dumps          27k files +         aws s3 sync +
+   raw dumps          43k files +         aws s3 sync +
                       citations           StartIngestionJob
 ```
 
@@ -551,7 +551,7 @@ Everything is pay-per-use. **Idle cost: ~$0.50/month** (the Route 53 zone).
 | Item | At low traffic |
 |------|----------------|
 | Bedrock tokens — Claude Haiku 4.5 | the main variable · ~$1–8/mo |
-| Embeddings — one-time ingestion | ~$1 for the full 27k-file corpus |
+| Embeddings — one-time ingestion | ~$1–2 for the full 43k-file corpus |
 | S3 Vectors | ~10× cheaper than OpenSearch Serverless minimum |
 | Lambda · DynamoDB · S3 · CloudFront | pennies |
 

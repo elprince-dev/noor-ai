@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Phase 1 — transform raw Quran + Bukhari dumps into KB-ready corpus files.
+"""Phase 1 — transform raw Quran + Bukhari + Muslim dumps into KB-ready corpus files.
 
 Reads the raw sources downloaded by ``download_data.sh`` and writes one file
 per verse / per hadith, each paired with a ``.metadata.json`` sidecar that
@@ -14,9 +14,9 @@ Pure stdlib, no AWS calls, no embedding. Offline, free, idempotent.
 
 Layout (relative to repo root):
     ingest/data/raw/quran/quran_en.json
-    ingest/data/raw/hadith/{eng,ara}-bukhari.json      -> input
+    ingest/data/raw/hadith/{eng,ara}-{bukhari,muslim}.json      -> input
     ingest/data/corpus/quran/<surah>_<ayah>.json(+.metadata.json)
-    ingest/data/corpus/hadith/bukhari/<n>.json(+.metadata.json)  -> output
+    ingest/data/corpus/hadith/<collection>/<n>.json(+.metadata.json)  -> output
 """
 
 from __future__ import annotations
@@ -97,16 +97,23 @@ def build_quran() -> int:
     return count
 
 
-def build_bukhari() -> int:
-    """One file per hadith, merging English + Arabic on hadithnumber."""
-    eng = json.loads((RAW / "hadith" / "eng-bukhari.json").read_text(encoding="utf-8"))
-    ara = json.loads((RAW / "hadith" / "ara-bukhari.json").read_text(encoding="utf-8"))
+# Hadith collections to build: edition slug -> (display name, output subdir,
+# expected count). Both are Sahih by definition. Add new collections here.
+HADITH_COLLECTIONS = {
+    "bukhari": ("Sahih al-Bukhari", "bukhari", 7589),
+    "muslim": ("Sahih Muslim", "muslim", 7563),
+}
 
-    collection = "Sahih al-Bukhari"
+
+def build_hadith(edition: str, collection: str, subdir: str) -> int:
+    """One file per hadith, merging English + Arabic on hadithnumber."""
+    eng = json.loads((RAW / "hadith" / f"eng-{edition}.json").read_text(encoding="utf-8"))
+    ara = json.loads((RAW / "hadith" / f"ara-{edition}.json").read_text(encoding="utf-8"))
+
     sections: dict[str, str] = eng["metadata"]["sections"]  # {"1": "Revelation", ...}
     ara_by_num = {h["hadithnumber"]: h for h in ara["hadiths"]}
 
-    out_dir = CORPUS / "hadith" / "bukhari"
+    out_dir = CORPUS / "hadith" / subdir
     out_dir.mkdir(parents=True, exist_ok=True)
 
     count = 0
@@ -133,7 +140,7 @@ def build_bukhari() -> int:
             "collection": collection,
             "book_name": book_name,
             "hadith_number": num,
-            "grade": "Sahih",  # Bukhari is Sahih by definition; source grades[] is empty
+            "grade": "Sahih",  # both collections are Sahih by definition
             "citation": citation,
         }
         metadata = {
@@ -161,13 +168,16 @@ def main() -> None:
     n_quran = build_quran()
     print(f"  ✓ {n_quran} verses -> {CORPUS / 'quran'}")
 
-    print("Building Bukhari corpus...")
-    n_hadith = build_bukhari()
-    print(f"  ✓ {n_hadith} hadith -> {CORPUS / 'hadith' / 'bukhari'}")
-
     # Sanity check: expected counts.
     assert n_quran == 6236, f"expected 6236 verses, got {n_quran}"
-    assert n_hadith == 7589, f"expected 7589 hadith, got {n_hadith}"
+
+    n_hadith = 0
+    for edition, (collection, subdir, expected) in HADITH_COLLECTIONS.items():
+        print(f"Building {collection} corpus...")
+        n = build_hadith(edition, collection, subdir)
+        print(f"  ✓ {n} hadith -> {CORPUS / 'hadith' / subdir}")
+        assert n == expected, f"{collection}: expected {expected} hadith, got {n}"
+        n_hadith += n
 
     total_files = (n_quran + n_hadith) * 2  # doc + sidecar each
     print(f"\n✓ Corpus ready: {n_quran + n_hadith} items ({total_files} files).")

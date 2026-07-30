@@ -45,12 +45,14 @@ class RagToolset:
 
         @tool
         def search_hadith(query: str) -> str:
-            """Search Sahih al-Bukhari for hadith relevant to a topic or question.
+            """Search Sahih al-Bukhari and Sahih Muslim for hadith relevant to
+            a topic or question.
 
             Use this to find hadith evidence. `query` should be a concise
             description of the concept you need (English or Arabic), e.g.
             "actions by intentions" or "night prayer witr".
-            Returns hadith prefixed with their citation, e.g. [Sahih al-Bukhari 1].
+            Returns hadith prefixed with their citation, e.g.
+            [Sahih al-Bukhari 1] or [Sahih Muslim 8].
             """
             chunks = retriever.retrieve(query, source_type="hadith")
             return ContextBuilder.build(chunks)
