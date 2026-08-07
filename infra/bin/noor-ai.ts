@@ -12,6 +12,7 @@ import { WebStack } from '../lib/web-stack';
 import { KnowledgeBaseStack } from '../lib/knowledge-base-stack';
 import { APP_PREFIX } from '../lib/config';
 import { DnsStack } from '../lib/dns-stack';
+import { ObservabilityStack } from '../lib/observability-stack';
 
 const DOMAIN_NAME = 'noorai.elprince.net';
 
@@ -36,7 +37,15 @@ const kb = new KnowledgeBaseStack(app, `${APP_PREFIX}-KnowledgeBase`, { env });
 const api = new ApiStack(app, `${APP_PREFIX}-Api`, {
   env,
   chatTable: data.chatTable,
-  knowledgeBaseId: kb.knowledgeBaseId,   // NEW
+  tracesTable: data.tracesTable,
+  feedbackTable: data.feedbackTable,
+  knowledgeBaseId: kb.knowledgeBaseId,
+});
+
+// Observability layer — metric filters, dashboard, and alarm on the API logs.
+new ObservabilityStack(app, `${APP_PREFIX}-Observability`, {
+  env,
+  apiLogGroup: api.apiLogGroup,
 });
 
 // Delivery layer — depends on the API layer.

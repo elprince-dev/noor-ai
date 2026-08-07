@@ -11,7 +11,7 @@ class AgentEvent:
     (ConversationChain) or how they're transported (app.py).
     """
 
-    type: str  # "token" | "tool_start" | "tool_end" | "done" | "error"
+    type: str  # "meta" | "token" | "tool_start" | "tool_end" | "done" | "error"
     data: dict = field(default_factory=dict)
 
     def to_ndjson(self) -> str:
@@ -33,9 +33,17 @@ class AgentEvent:
         )
 
     @staticmethod
-    def done() -> "AgentEvent":
-        return AgentEvent("done")
+    def meta(request_id: str) -> "AgentEvent":
+        return AgentEvent("meta", {"request_id": request_id})
 
     @staticmethod
-    def error(detail: str) -> "AgentEvent":
-        return AgentEvent("error", {"detail": detail})
+    def done(request_id: str | None = None) -> "AgentEvent":
+        data = {"request_id": request_id} if request_id is not None else {}
+        return AgentEvent("done", data)
+
+    @staticmethod
+    def error(detail: str, request_id: str | None = None) -> "AgentEvent":
+        data = {"detail": detail}
+        if request_id is not None:
+            data["request_id"] = request_id
+        return AgentEvent("error", data)

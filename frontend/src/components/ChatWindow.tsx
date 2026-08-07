@@ -10,6 +10,10 @@ interface ChatWindowProps {
   loading: boolean;
   onPickSuggestion: (text: string) => void;
   onRegenerate?: () => void;
+  onFeedbackChange?: (
+    index: number,
+    feedback: NonNullable<Message["feedback"]>,
+  ) => void;
 }
 
 export function ChatWindow({
@@ -17,6 +21,7 @@ export function ChatWindow({
   loading,
   onPickSuggestion,
   onRegenerate,
+  onFeedbackChange,
 }: ChatWindowProps) {
   const { t } = useSettings();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -135,6 +140,9 @@ export function ChatWindow({
             message={msg}
             isLast={i === messages.length - 1}
             onRegenerate={onRegenerate}
+            onFeedbackChange={
+              onFeedbackChange && ((fb) => onFeedbackChange(i, fb))
+            }
             onGrow={() => {
               if (pinnedRef.current) scrollToBottom();
             }}

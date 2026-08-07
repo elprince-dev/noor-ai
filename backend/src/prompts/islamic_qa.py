@@ -87,3 +87,7 @@ Response structure:
   3. Ruling by madhab — state ikhtilaf explicitly where it exists
   4. Practical conclusion"""
   
+
+# Versioned prompt registry for the offline eval harness (backend/evals).
+# Eval_Config's `prompt_version` keys into this dict (design §eval_config).
+PROMPT_VERSIONS: dict[str, str] = {"v1": AGENT_SYSTEM_PROMPT}

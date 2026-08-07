@@ -1,0 +1,28 @@
+{
+  "mcpServers" : {
+    "cradle-mcp" : {
+      "command" : "cradle-mcp",
+      "args" : [ ]
+    },
+    "datanet-mcp" : {
+      "command" : "datanet-mcp",
+      "args" : [ ]
+    },
+    "andes-mcp" : {
+      "command" : "andes-mcp",
+      "args" : [ ]
+    },
+    "weather-intelligence-mcp" : {
+      "command" : "weather-intelligence-mcp",
+      "args" : [ ]
+    },
+    "ai-community-slack-mcp" : {
+      "command" : "ai-community-slack-mcp",
+      "args" : [ ]
+    },
+    "slack-mcp" : {
+      "command" : "slack-mcp",
+      "args" : [ ]
+    }
+  }
+}

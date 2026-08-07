@@ -19,6 +19,21 @@ export const BEDROCK_REGION = 'us-east-1';
 /** DynamoDB chat history table name. */
 export const CHAT_TABLE_NAME = 'noor-ai-chat-history';
 
+/** DynamoDB request trace table name. */
+export const TRACE_TABLE_NAME = 'noor-ai-traces';
+
+/** DynamoDB user feedback table name. */
+export const FEEDBACK_TABLE_NAME = 'noor-ai-feedback';
+
+/** Days a stored trace is retained before DynamoDB TTL expiry. */
+export const TRACE_RETENTION_DAYS = 90;
+
+/** Error-rate alarm threshold (percent of requests). */
+export const ERROR_RATE_THRESHOLD_PCT = 5;
+
+/** Evaluation period for the error-rate alarm (minutes). */
+export const ERROR_RATE_PERIOD_MINUTES = 5;
+
 /** Embedding model for the Knowledge Base (multilingual: Arabic + English). */
 export const EMBEDDING_MODEL_ID = 'cohere.embed-multilingual-v3';
 

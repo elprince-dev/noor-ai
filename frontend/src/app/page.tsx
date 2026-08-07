@@ -142,6 +142,11 @@ export default function Home() {
         { question, session_id: sessionId, school },
         (ev) => {
           switch (ev.type) {
+            case "meta":
+              // Stamp the backend Request_ID onto the in-flight answer so
+              // feedback can reference it once streaming completes.
+              update((last) => ({ ...last, requestId: ev.request_id }));
+              break;
             case "token":
               update((last) => ({ ...last, content: last.content + ev.text }));
               break;
@@ -166,7 +171,11 @@ export default function Home() {
               }));
               break;
             case "done":
-              update((last) => ({ ...last, stream: false }));
+              update((last) => ({
+                ...last,
+                stream: false,
+                requestId: ev.request_id ?? last.requestId,
+              }));
               break;
             case "error":
               update((last) => ({
@@ -200,6 +209,19 @@ export default function Home() {
   };
 
   const stopGenerating = () => abortRef.current?.abort();
+
+  /* ── Feedback ────────────────────────────────────────────────── */
+  const handleFeedbackChange = (
+    index: number,
+    feedback: NonNullable<Message["feedback"]>,
+  ) => {
+    const next = messages.map((m, i) =>
+      i === index ? { ...m, feedback } : m,
+    );
+    setMessages(next);
+    // Persist so the feedback state (and requestId) survive reloads.
+    if (activeId) syncConversation(activeId, next, school, sessionId);
+  };
 
   const regenerate = () => {
     if (loading || !lastQuestionRef.current) return;
@@ -417,6 +439,7 @@ export default function Home() {
               loading={loading}
               onPickSuggestion={send}
               onRegenerate={regenerate}
+              onFeedbackChange={handleFeedbackChange}
             />
 
             {/* ── Composer ── */}

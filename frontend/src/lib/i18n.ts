@@ -28,6 +28,10 @@ export interface Dictionary {
   disclaimer: string;
   copy: string;
   copied: string;
+  feedbackUp: string;
+  feedbackDown: string;
+  feedbackThanks: string;
+  feedbackNotSaved: string;
   send: string;
   stop: string;
   regenerate: string;
@@ -84,6 +88,10 @@ const en: Dictionary = {
     "Noor AI can make mistakes — verify important rulings with a qualified scholar.",
   copy: "Copy",
   copied: "Copied",
+  feedbackUp: "Good answer",
+  feedbackDown: "Bad answer",
+  feedbackThanks: "Thanks for your feedback",
+  feedbackNotSaved: "Not saved — try again",
   send: "Send question",
   stop: "Stop generating",
   regenerate: "Regenerate",
@@ -167,6 +175,10 @@ const ar: Dictionary = {
   disclaimer: "قد يخطئ نور — تحقّق من الأحكام المهمة مع عالمٍ مختص.",
   copy: "نسخ",
   copied: "تم النسخ",
+  feedbackUp: "إجابة جيدة",
+  feedbackDown: "إجابة سيئة",
+  feedbackThanks: "شكرًا على ملاحظاتك",
+  feedbackNotSaved: "لم يُحفظ — حاول مجددًا",
   send: "إرسال السؤال",
   stop: "إيقاف التوليد",
   regenerate: "إعادة التوليد",

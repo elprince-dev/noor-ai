@@ -15,4 +15,8 @@ export interface Message {
   stream?: boolean;
   /** agent tool calls surfaced in the UI (rich streaming) */
   steps?: ToolStep[];
+  /** backend request id from the stream's meta/done events (links feedback) */
+  requestId?: string;
+  /** feedback state: submitted rating, or "error" when submission failed */
+  feedback?: "up" | "down" | "error";
 }

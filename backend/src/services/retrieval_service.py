@@ -1,8 +1,10 @@
+import time
 from dataclasses import dataclass
 
 import boto3
 
 from src.config import config
+from src.observability.trace_context import TraceContext
 
 
 @dataclass(frozen=True)
@@ -59,6 +61,7 @@ class RetrievalService:
         Returns:
             RetrievedChunk list, ordered by relevance (highest score first).
         """
+        t0 = time.monotonic()
         vector_config: dict = {"numberOfResults": top_k or config.retrieval_top_k}
         if source_type:
             vector_config["filter"] = {
@@ -71,7 +74,10 @@ class RetrievalService:
             retrievalConfiguration={"vectorSearchConfiguration": vector_config},
         )
 
-        return [cls._to_chunk(r) for r in response.get("retrievalResults", [])]
+        chunks = [cls._to_chunk(r) for r in response.get("retrievalResults", [])]
+        if (ctx := TraceContext.current()) is not None:
+            ctx.record_retrieval(chunks, int((time.monotonic() - t0) * 1000))
+        return chunks
 
     @staticmethod
     def _to_chunk(result: dict) -> RetrievedChunk:

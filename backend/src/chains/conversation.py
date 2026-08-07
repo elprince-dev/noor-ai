@@ -2,6 +2,7 @@ import time
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
+from src.observability.instrumentation import AgentEventRecorder
 from src.services.agent_factory import AgentFactory
 from src.services.llm_service import LLMService
 from src.services.memory_service import MemoryService
@@ -29,6 +30,7 @@ class ConversationChain:
 
     def __init__(self):
         self._agent = AgentFactory.get_agent()
+        self._recorder = AgentEventRecorder()
 
     def _build_messages(self, question: str, school: str, past_messages: list):
         """Assemble the message list for the agent: school note + history + question."""
@@ -65,6 +67,7 @@ class ConversationChain:
         async for event in self._agent.astream_events(
             {"messages": messages}, version="v2"
         ):
+            self._recorder.on_event(event)
             kind = event["event"]
 
             if kind == "on_chat_model_stream":
@@ -90,6 +93,7 @@ class ConversationChain:
                 yield AgentEvent.tool_end(run_id, event["name"], ms, count)
 
         answer = "".join(answer_parts)
+        self._recorder.on_complete(answer)
         history.add_message(HumanMessage(content=question))
         history.add_message(AIMessage(content=answer))
         yield AgentEvent.done()

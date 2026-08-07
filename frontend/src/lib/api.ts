@@ -6,11 +6,12 @@ const API_ORIGIN = process.env.NEXT_PUBLIC_API_URL || '';
 export type School = 'hanafi' | 'maliki' | 'shafii' | 'hanbali' | 'general';
 
 export type AgentStreamEvent =
+  | { type: "meta"; request_id: string }
   | { type: "token"; text: string }
   | { type: "tool_start"; id: string; tool: string; query?: string }
   | { type: "tool_end"; id: string; tool: string; ms: number; count: number }
-  | { type: "done" }
-  | { type: "error"; detail: string };
+  | { type: "done"; request_id: string }
+  | { type: "error"; detail: string; request_id?: string };
 
 export interface AskRequest {
   question: string;
@@ -82,6 +83,21 @@ export class NoorApiClient {
       flushLines();
     }
     flushLines(true);
+  }
+
+  /**
+   * Submit thumbs up/down feedback for a previous answer, identified by the
+   * request_id from the stream's meta/done events. Throws on non-2xx or
+   * timeout (10 s); the caller handles the error state.
+   */
+  async submitFeedback(requestId: string, rating: 'up' | 'down'): Promise<void> {
+    const res = await fetch(`${this.baseUrl}/feedback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ request_id: requestId, rating }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) throw new Error(`Failed to submit feedback: ${res.status}`);
   }
 }
 

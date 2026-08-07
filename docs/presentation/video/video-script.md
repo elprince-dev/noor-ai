@@ -1,7 +1,7 @@
 # Noor AI — YouTube Video Script
 
-Paired with `slides.md` (18 slides). Target runtime: **6.5–7.5 minutes** at a
-relaxed speaking pace (~140 wpm). Total narration ≈ 1,050 words.
+Paired with `slides.md` (18 slides). Target runtime: **7–8 minutes** at a
+relaxed speaking pace (~140 wpm). Total narration ≈ 1,200 words.
 
 ## Production notes
 
@@ -106,7 +106,7 @@ Demo beats — narrate over the recording:
 
 ---
 
-## CHUNK 3 — Three Pieces of Code (~2 min)
+## CHUNK 3 — Three Pieces of Code (~2.5 min)
 
 ### Slide 8 — Divider: Inside the Agent
 
@@ -130,23 +130,33 @@ Demo beats — narrate over the recording:
 
 ### Slide 11 — Code Moment 2: The Agentic Turn
 
-> Moment two — the event loop at the heart of the backend. It translates the
-> agent framework's internal events into clean UI events: answer tokens, tool
-> starts, tool ends.
+> Moment two. When the agent runs, it's not one clean question-in, answer-out
+> call — internally the model thinks, searches, and then writes. LangChain
+> exposes all of that as a stream of events, and this loop listens for just
+> three: an answer token arrived — forward it to the browser and save it. A
+> search started — tell the UI. A search finished — report how long it took
+> and how many results came back.
 >
-> My favorite detail is this `answer_parts.clear()`. When a model decides to
-> call a tool, it often says something first, like "let me look that up."
-> That's preamble, not answer. Discarding it on every tool start means only
-> the final grounded answer gets persisted to memory — and the UI applies the
-> same rule.
+> My favorite line is this `answer_parts.clear()`. Before calling a tool,
+> models often think out loud — "let me look that up." Those words stream in
+> like answer tokens, but they're preamble, not answer. So the rule is: the
+> moment a search starts, discard everything so far. Only what comes *after*
+> the last search — the grounded answer — gets saved to memory.
 
 ### Slide 12 — Code Moment 3: Own Your Wire Contract
 
-> Moment three — the streaming protocol. One NDJSON line per event, defined
-> once in Python, mirrored one-to-one in TypeScript. This little contract is
-> what makes the product experience possible: the UI can show "searching the
-> Quran, five results, three hundred milliseconds" *while* the answer is still
-> streaming — because tool events and tokens travel on the same wire.
+> Moment three. That loop produces two very different things — answer text
+> and progress updates — and both have to travel to the browser over one HTTP
+> response, live. So both sides agree on a tiny protocol: every event is one
+> line of JSON, with a type field that tells the frontend what to do — token
+> means append text, tool-end means show "five results, three hundred
+> milliseconds," done means finish.
+>
+> "Own your wire contract" means this protocol is defined deliberately — one
+> dataclass in Python, one mirrored type in TypeScript. Change an event, and
+> there are exactly two places to touch — and the compiler catches every
+> consumer you forgot. That one little contract is what lets the UI show the
+> agent working *while* the answer is still streaming.
 
 ---
 

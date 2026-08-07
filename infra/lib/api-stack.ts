@@ -6,11 +6,15 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import { Construct } from 'constructs';
 import * as path from 'path';
 import { pythonLambdaCode } from './python-lambda-code';
-import { BEDROCK_MODEL_ID, BEDROCK_REGION } from './config';
+import { BEDROCK_MODEL_ID, BEDROCK_REGION, TRACE_RETENTION_DAYS } from './config';
 
 export interface ApiStackProps extends cdk.StackProps {
   /** Chat history table provided by the DataStack. */
   readonly chatTable: dynamodb.ITable;
+  /** Request trace table provided by the DataStack. */
+  readonly tracesTable: dynamodb.ITable;
+  /** User feedback table provided by the DataStack. */
+  readonly feedbackTable: dynamodb.ITable;
   readonly knowledgeBaseId: string;
 }
 
@@ -28,6 +32,9 @@ export class ApiStack extends cdk.Stack {
   /** Function URL domain (no scheme/path), consumed by the WebStack origin. */
   public readonly apiDomain: string;
 
+  /** API Lambda log group, consumed by the observability stack (metric filters). */
+  public readonly apiLogGroup: logs.LogGroup;
+
   constructor(scope: Construct, id: string, props: ApiStackProps) {
     super(scope, id, props);
 
@@ -37,7 +44,7 @@ export class ApiStack extends cdk.Stack {
     // FastAPI StreamingResponse stream through the Function URL.
     const backendDir = path.join(__dirname, '..', '..', 'backend');
 
-    const apiLogGroup = new logs.LogGroup(this, 'ApiFunctionLogs', {
+    this.apiLogGroup = new logs.LogGroup(this, 'ApiFunctionLogs', {
       retention: logs.RetentionDays.ONE_WEEK,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
@@ -66,8 +73,13 @@ export class ApiStack extends cdk.Stack {
         BEDROCK_MODEL_ID: BEDROCK_MODEL_ID,
         BEDROCK_REGION: BEDROCK_REGION,
         KNOWLEDGE_BASE_ID: props.knowledgeBaseId,
+        // Observability / tracing configuration
+        TRACE_TABLE: props.tracesTable.tableName,
+        FEEDBACK_TABLE: props.feedbackTable.tableName,
+        TRACE_ENABLED: 'true',
+        TRACE_RETENTION_DAYS: TRACE_RETENTION_DAYS.toString(),
       },
-      logGroup: apiLogGroup,
+      logGroup: this.apiLogGroup,
     });
 
     // Bedrock permissions. Cross-region inference profiles route to the
@@ -93,8 +105,10 @@ export class ApiStack extends cdk.Stack {
       })
     );
 
-    // DynamoDB permissions (cross-stack grant → policy references the table ARN)
+    // DynamoDB permissions (cross-stack grants → policy references the table ARNs)
     props.chatTable.grantReadWriteData(apiFunction);
+    props.tracesTable.grantReadWriteData(apiFunction);
+    props.feedbackTable.grantReadWriteData(apiFunction);
 
     // ─── Function URL (streaming) ────────────────────────────
     // Public (AuthType NONE) like the previous API Gateway; CloudFront fronts it.

@@ -48,3 +48,6 @@ ingest/data/corpus/
 docs/presentation/*.html
 docs/presentation/*.pdf
 docs/presentation/*.pptx
+
+# TypeScript incremental build cache
+*.tsbuildinfo

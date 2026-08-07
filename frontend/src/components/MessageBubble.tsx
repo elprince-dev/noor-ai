@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Message } from "@/lib/types";
+import { FeedbackControls } from "./FeedbackControls";
 import { useSettings } from "./SettingsProvider";
 
 interface MessageBubbleProps {
@@ -11,6 +12,7 @@ interface MessageBubbleProps {
   isLast?: boolean;
   onRegenerate?: () => void;
   onGrow?: () => void;
+  onFeedbackChange?: (feedback: NonNullable<Message["feedback"]>) => void;
 }
 
 export function MessageBubble({
@@ -18,6 +20,7 @@ export function MessageBubble({
   isLast,
   onRegenerate,
   onGrow,
+  onFeedbackChange,
 }: MessageBubbleProps) {
   const { t } = useSettings();
   const isUser = message.role === "user";
@@ -214,6 +217,16 @@ export function MessageBubble({
                 </svg>
                 {t.regenerate}
               </button>
+            )}
+
+            {/* Feedback — only when the stream finished AND a Request_ID
+                arrived; without one there is nothing to attach feedback to. */}
+            {!message.stream && message.requestId && (
+              <FeedbackControls
+                requestId={message.requestId}
+                feedback={message.feedback}
+                onFeedbackChange={onFeedbackChange}
+              />
             )}
           </div>
         )}
