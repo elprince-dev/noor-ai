@@ -1,9 +1,11 @@
 {
   "name": "noor-ai-presentation",
   "private": true,
-  "description": "Marp slide decks for Noor AI — portfolio video (slides.md) and interview deep dive (deep-dive.md)",
+  "description": "Marp slide decks for Noor AI — user demo (demo.md), portfolio video (slides.md), and interview deep dive (deep-dive.md)",
   "scripts": {
-    "html": "marp slides.md --theme-set theme/noor.css --html -o slides.html && marp deep-dive.md --theme-set theme/noor.css --html -o deep-dive.html",
+    "html": "marp demo.md --theme-set theme/noor.css --html -o demo.html && marp slides.md --theme-set theme/noor.css --html -o slides.html && marp deep-dive.md --theme-set theme/noor.css --html -o deep-dive.html",
+    "demo": "marp demo.md --theme-set theme/noor.css --html --preview",
+    "demo:watch": "marp demo.md --theme-set theme/noor.css --html -w -o demo.html",
     "pdf": "marp slides.md --theme-set theme/noor.css --html --allow-local-files -o slides.pdf",
     "pptx": "marp slides.md --theme-set theme/noor.css --html --allow-local-files -o slides.pptx",
     "watch": "marp slides.md --theme-set theme/noor.css --html -w -o slides.html",
